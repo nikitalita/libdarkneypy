@@ -1,40 +1,46 @@
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include "yolo_v2_class.hpp"
 
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
-int add(int i, int j) {
-    return i + j;
-}
-
 namespace py = pybind11;
+std::vector<bbox_t> (Detector::*mpf)(std::string, float, bool) = &Detector::detect;
+PYBIND11_MODULE(yolo_v2_class, m) {
+    m.doc() = "yolo_v2_class module";
+    m.def("init", &init, py::arg("configurationFilename"), py::arg("weightsFilename"), py::arg("gpu") = 0, py::arg("batch_size") = 1, "Initialize the detector");
+    m.def("detect_image", &detect_image, py::arg("filename"), py::arg("container"), "Detect objects in an image");
+    m.def("detect_mat", &detect_mat, py::arg("data"), py::arg("data_length"), py::arg("container"), "Detect objects in a resized image");
+    m.def("dispose", &dispose, "Dispose the detector");
+    m.def("get_device_count", &get_device_count, "Get the number of available GPUs");
+    m.def("get_device_name", &get_device_name, py::arg("gpu"), py::arg("deviceName"), "Get the name of a GPU by index");
+    m.def("built_with_cuda", &built_with_cuda, "Check if the library was built with CUDA support");
+    m.def("built_with_cudnn", &built_with_cudnn, "Check if the library was built with cuDNN support");
+    m.def("built_with_opencv", &built_with_opencv, "Check if the library was built with OpenCV support");
+    m.def("send_json_custom", &send_json_custom, py::arg("send_buf"), py::arg("port"), py::arg("timeout"), "Send a JSON string over a socket");
 
-PYBIND11_MODULE(cmake_example, m) {
-    m.doc() = R"pbdoc(
-        Pybind11 example plugin
-        -----------------------
+    std::vector<bbox_t> (Detector::*detect_1)(std::string, float, bool) = &Detector::detect;
+    std::vector<bbox_t> (Detector::*detect_2)(image_t, float, bool) = &Detector::detect;
+    std::vector<bbox_t> (Detector::*detect_3)(cv::Mat, float, bool) = &Detector::detect;
 
-        .. currentmodule:: cmake_example
+    
 
-        .. autosummary::
-           :toctree: _generate
-
-           add
-           subtract
-    )pbdoc";
-
-    m.def("add", &add, R"pbdoc(
-        Add two numbers
-
-        Some other explanation about the add function.
-    )pbdoc");
-
-    m.def("subtract", [](int i, int j) { return i - j; }, R"pbdoc(
-        Subtract two numbers
-
-        Some other explanation about the subtract function.
-    )pbdoc");
-
+    py::class_<Detector>(m, "Detector")
+        .def(py::init<std::string, std::string, int, int>())
+        .def("detect", detect_1, py::arg("image_filename"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
+        .def("detect_img", detect_2, py::arg("img"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
+        .def("detectBatch", &Detector::detectBatch, py::arg("img"), py::arg("batch_size"), py::arg("width"), py::arg("height"), py::arg("thresh"), py::arg("make_nms") = true)
+        .def_static("load_image", &Detector::load_image, py::arg("image_filename"))
+        .def_static("free_image", &Detector::free_image, py::arg("m"))
+        .def("get_net_width", &Detector::get_net_width)
+        .def("get_net_height", &Detector::get_net_height)
+        .def("get_net_color_depth", &Detector::get_net_color_depth)
+        .def("tracking_id", &Detector::tracking_id, py::arg("cur_bbox_vec"), py::arg("change_history") = true, py::arg("frames_story") = 5, py::arg("max_dist") = 40)
+#ifdef OPENCV
+        .def("detect_mat", detect_3, py::arg("mat"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
+#endif
+        .def("get_cuda_context", &Detector::get_cuda_context);
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
 #else

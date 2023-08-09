@@ -1,0 +1,5 @@
+{
+    "overlay-ports": [
+      "./deps/ports"
+    ]
+  }

@@ -1,0 +1,32 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 89213ec7..6b7911c1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -243,10 +243,24 @@ if(ENABLE_OPENCV)
+   endif()
+ endif()
+ find_package(Stb REQUIRED)
+-find_package(OpenMP)
+ 
+-if(APPLE AND NOT OPENMP_FOUND)
+-  message(STATUS "  ->  To enable OpenMP on macOS, please install libomp from Homebrew")
++if(APPLE)
++  # libomp 15.0+ from brew is keg-only, so have to search in other locations.
++  # See https://github.com/Homebrew/homebrew-core/issues/112107#issuecomment-1278042927.
++  execute_process(COMMAND brew --prefix libomp
++                  OUTPUT_VARIABLE HOMEBREW_LIBOMP_PREFIX
++                  OUTPUT_STRIP_TRAILING_WHITESPACE)
++  set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
++  set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
++  set(OpenMP_C_LIB_NAMES omp)
++  set(OpenMP_CXX_LIB_NAMES omp)
++  set(OpenMP_omp_LIBRARY ${HOMEBREW_LIBOMP_PREFIX}/lib/libomp.dylib)
++  find_package(OpenMP)
++  if(NOT OPENMP_FOUND)
++    message(STATUS "  ->  To enable OpenMP on macOS, please install libomp from Homebrew")
++  endif()
++else()
++  find_package(OpenMP)
+ endif()
+ 
+ set(ADDITIONAL_CXX_FLAGS "-Wall -Wno-unused-result -Wno-unknown-pragmas -Wfatal-errors -Wno-deprecated-declarations -Wno-write-strings")

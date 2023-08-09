@@ -1,0 +1,21 @@
+diff --git a/DarknetConfig.cmake.in b/DarknetConfig.cmake.in
+index b7276c3d..2bfb3a78 100644
+--- a/DarknetConfig.cmake.in
++++ b/DarknetConfig.cmake.in
+@@ -33,6 +33,16 @@ if(MSVC)
+ endif()
+ 
+ if(@OPENMP_FOUND@)
++  if(APPLE)
++    execute_process(COMMAND brew --prefix libomp
++                    OUTPUT_VARIABLE HOMEBREW_LIBOMP_PREFIX
++                    OUTPUT_STRIP_TRAILING_WHITESPACE)
++    set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
++    set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
++    set(OpenMP_C_LIB_NAMES omp)
++    set(OpenMP_CXX_LIB_NAMES omp)
++    set(OpenMP_omp_LIBRARY ${HOMEBREW_LIBOMP_PREFIX}/lib/libomp.dylib)
++  endif()
+   find_dependency(OpenMP)
+ endif()
+ 
