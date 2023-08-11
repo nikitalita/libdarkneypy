@@ -6,9 +6,12 @@
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
 namespace py = pybind11;
-std::vector<bbox_t> (Detector::*mpf)(std::string, float, bool) = &Detector::detect;
-PYBIND11_MODULE(yolo_v2_class, m) {
-    m.doc() = "yolo_v2_class module";
+std::vector<bbox_t> (Detector::*detect_1)(std::string, float, bool) = &Detector::detect;
+std::vector<bbox_t> (Detector::*detect_2)(image_t, float, bool) = &Detector::detect;
+std::vector<bbox_t> (Detector::*detect_3)(cv::Mat, float, bool) = &Detector::detect;
+
+PYBIND11_MODULE(libdarknetpy, m) {
+    m.doc() = "libdarknetpy module";
     m.def("init", &init, py::arg("configurationFilename"), py::arg("weightsFilename"), py::arg("gpu") = 0, py::arg("batch_size") = 1, "Initialize the detector");
     m.def("detect_image", &detect_image, py::arg("filename"), py::arg("container"), "Detect objects in an image");
     m.def("detect_mat", &detect_mat, py::arg("data"), py::arg("data_length"), py::arg("container"), "Detect objects in a resized image");
@@ -20,12 +23,25 @@ PYBIND11_MODULE(yolo_v2_class, m) {
     m.def("built_with_opencv", &built_with_opencv, "Check if the library was built with OpenCV support");
     m.def("send_json_custom", &send_json_custom, py::arg("send_buf"), py::arg("port"), py::arg("timeout"), "Send a JSON string over a socket");
 
-    std::vector<bbox_t> (Detector::*detect_1)(std::string, float, bool) = &Detector::detect;
-    std::vector<bbox_t> (Detector::*detect_2)(image_t, float, bool) = &Detector::detect;
-    std::vector<bbox_t> (Detector::*detect_3)(cv::Mat, float, bool) = &Detector::detect;
+    py::class_<bbox_t>(m, "bbox_t")
+        .def_readwrite("x", &bbox_t::x)
+        .def_readwrite("y", &bbox_t::y)
+        .def_readwrite("w", &bbox_t::w)
+        .def_readwrite("h", &bbox_t::h)
+        .def_readwrite("prob", &bbox_t::prob)
+        .def_readwrite("obj_id", &bbox_t::obj_id)
+        .def_readwrite("track_id", &bbox_t::track_id)
+        .def_readwrite("frames_counter", &bbox_t::frames_counter)
+        .def_readwrite("x_3d", &bbox_t::x_3d)
+        .def_readwrite("y_3d", &bbox_t::y_3d)
+        .def_readwrite("z_3d", &bbox_t::z_3d);
 
-    
-
+    py::class_<image_t>(m, "image_t")
+        .def_readwrite("data", &image_t::data)
+        .def_readwrite("w", &image_t::w)
+        .def_readwrite("h", &image_t::h)
+        .def_readwrite("c", &image_t::c);
+        
     py::class_<Detector>(m, "Detector")
         .def(py::init<std::string, std::string, int, int>())
         .def("detect", detect_1, py::arg("image_filename"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)

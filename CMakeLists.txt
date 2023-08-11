@@ -1,7 +1,19 @@
 cmake_minimum_required(VERSION 3.4...3.18)
-project(cmake_example)
+project(libdarknetpy)
 
-add_subdirectory(pybind11)
+#add_subdirectory(pybind11)
+# run `pybind11-config --cmakedir` in shell
+
+find_package(pybind11 QUIET)
+if(NOT pybind11_FOUND)
+  set(PYBIND_CONFIG_CMD "pybind11-config --cmakedir")
+  execute_process(COMMAND "pybind11-config" "--cmakedir"
+                  OUTPUT_VARIABLE PYBIND11_DIR
+                  OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(pybind11_DIR ${PYBIND11_DIR})
+endif()
+
+find_package(pybind11 CONFIG REQUIRED)
 if(APPLE)
   # libomp 15.0+ from brew is keg-only, so have to search in other locations.
   # See https://github.com/Homebrew/homebrew-core/issues/112107#issuecomment-1278042927.
@@ -21,11 +33,11 @@ else()
   find_package(OpenMP)
 endif()
 
-pybind11_add_module(cmake_example src/main.cpp)
+pybind11_add_module(libdarknetpy src/main.cpp)
 find_package(Darknet CONFIG REQUIRED)
-target_link_libraries(cmake_example PRIVATE Darknet::dark)
+target_link_libraries(libdarknetpy PRIVATE Darknet::dark)
 
 # EXAMPLE_VERSION_INFO is defined by setup.py and passed into the C++ code as a
 # define (VERSION_INFO) here.
-target_compile_definitions(cmake_example
+target_compile_definitions(libdarknetpy
                            PRIVATE VERSION_INFO=${EXAMPLE_VERSION_INFO})

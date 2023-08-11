@@ -1,5 +1,5 @@
-import cmake_example as m
+import libdarknetpy as m
 
 
 def test_main():
-    print(m)
+    detector = m.Detector()

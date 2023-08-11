@@ -6,7 +6,7 @@ from pathlib import Path
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
-
+from pybind11 import get_cmake_dir
 # Convert distutils Windows platform specifiers to CMake -A arguments
 PLAT_TO_CMAKE = {
     "win32": "Win32",
@@ -114,8 +114,22 @@ class CMakeBuild(build_ext):
         build_temp = Path(self.build_temp) / ext.name
         if not build_temp.exists():
             build_temp.mkdir(parents=True)
+        # if not os.environ.get("VCPKG_ROOT"):
+        #     #install vcpkg
+        #     vcpkg_root = build_temp / "vcpkg"
+        #     subprocess.run(["git", "clone", "--depth=1", "https://github.com/microsoft/vcpkg.git", "vcpkg"], cwd=build_temp, check=True)
+        #     if sys.platform.startswith("win32"):
+        #         subprocess.run(["bootstrap-vcpkg.bat"], cwd=vcpkg_root, check=True)
+        #     else:
+        #         subprocess.run(["./bootstrap-vcpkg.sh"], cwd=vcpkg_root, check=True)
+        #     # Set vcpkg root
+        #     os.environ["VCPKG_ROOT"] = str(vcpkg_root)
         #include vcpkg toolchain file from VCPKG_ROOT
+        if not os.environ.get("VCPKG_ROOT"):
+            raise Exception("VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE={}".format(os.environ.get("VCPKG_ROOT") + "/scripts/buildsystems/vcpkg.cmake")]
+        # set pybind11_DIR
+        cmake_args += ["-Dpybind11_DIR={}".format(get_cmake_dir())]
         subprocess.run(
             ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
         )
@@ -127,15 +141,16 @@ class CMakeBuild(build_ext):
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.
 setup(
-    name="cmake_example",
+    name="libdarknetpy",
     version="0.0.1",
     author="Dean Moldovan",
     author_email="dean0x7d@gmail.com",
     description="A test project using pybind11 and CMake",
     long_description="",
-    ext_modules=[CMakeExtension("cmake_example")],
+    ext_modules=[CMakeExtension("libdarknetpy")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},
     python_requires=">=3.7",
+    requires=["pybind11"],
 )
