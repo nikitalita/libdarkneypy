@@ -11,6 +11,7 @@ if(NOT pybind11_FOUND)
                   OUTPUT_VARIABLE PYBIND11_DIR
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
   set(pybind11_DIR ${PYBIND11_DIR})
+  message("pybind11_DIR: ${pybind11_DIR}")
 endif()
 
 find_package(pybind11 CONFIG REQUIRED)

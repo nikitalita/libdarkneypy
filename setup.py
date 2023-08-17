@@ -7,6 +7,9 @@ from pathlib import Path
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 from pybind11 import get_cmake_dir
+import pybind11_stubgen
+import importlib
+
 # Convert distutils Windows platform specifiers to CMake -A arguments
 PLAT_TO_CMAKE = {
     "win32": "Win32",
@@ -14,6 +17,22 @@ PLAT_TO_CMAKE = {
     "win-arm32": "ARM",
     "win-arm64": "ARM64",
 }
+
+
+class _PackageFinder:
+    """
+    Custom loader to allow loading built modules from their location
+    in the build directory (as opposed to their install location)
+    """
+
+    mapping = {}
+
+    @classmethod
+    def find_spec(cls, fullname, path, target=None):
+        m = cls.mapping.get(fullname)
+        if m:
+            return importlib.util.spec_from_file_location(fullname, m)
+
 
 
 # A CMakeExtension needs a sourcedir instead of a file list.
@@ -26,6 +45,7 @@ class CMakeExtension(Extension):
 
 
 class CMakeBuild(build_ext):
+
     def build_extension(self, ext: CMakeExtension) -> None:
         # Must be in this form due to bug in .resolve() only fixed in Python 3.10+
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
@@ -127,6 +147,10 @@ class CMakeBuild(build_ext):
         #include vcpkg toolchain file from VCPKG_ROOT
         if not os.environ.get("VCPKG_ROOT"):
             raise Exception("VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
+        if not os.environ.get("VCPKG_DEFAULT_TRIPLET"):
+            if sys.platform.startswith("win32"):
+                os.environ["VCPKG_DEFAULT_TRIPLET"] = "x64-windows-static-md"
+            # We don't need to set it for linux and mac because they compile statically by default
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE={}".format(os.environ.get("VCPKG_ROOT") + "/scripts/buildsystems/vcpkg.cmake")]
         # set pybind11_DIR
         cmake_args += ["-Dpybind11_DIR={}".format(get_cmake_dir())]
@@ -136,6 +160,23 @@ class CMakeBuild(build_ext):
         subprocess.run(
             ["cmake", "--build", ".", *build_args], cwd=build_temp, check=True
         )
+        # This isn't working right now
+        # self.generate_pyi(build_temp)
+        
+    def generate_pyi(self, build_temp) -> None:
+        # Configure custom loader
+        _PackageFinder.mapping = {"libdarknetpy": str(build_temp / "libdarknetpy")}
+        sys.meta_path.insert(0, _PackageFinder)
+
+        # Generate pyi modules
+        stubgen_args = [
+            "--no-setup-py",
+            "--log-level=WARNING",
+            "--root-module-suffix=",
+            "--ignore-invalid=defaultarg",
+            "libdarknetpy",
+        ]
+        pybind11_stubgen.main(stubgen_args)
 
 
 # The information here can also be placed in setup.cfg - better separation of
@@ -152,5 +193,5 @@ setup(
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},
     python_requires=">=3.7",
-    requires=["pybind11"],
+    requires=["pybind11"]
 )

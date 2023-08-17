@@ -1,6 +1,17 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "yolo_v2_class.hpp"
+#include <pybind11/pybind11.h>
+#include <pybind11/functional.h>
+#include <pybind11/stl_bind.h>
+#include <pybind11/embed.h>
+#include <pybind11/pytypes.h>
+#include <pybind11/numpy.h>
+#include <array>
+#include <pybind11/stl.h>
+#include <pybind11/complex.h>
+#include <pybind11/functional.h> 
+#include <pybind11/chrono.h>
 
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
@@ -41,11 +52,29 @@ PYBIND11_MODULE(libdarknetpy, m) {
         .def_readwrite("w", &image_t::w)
         .def_readwrite("h", &image_t::h)
         .def_readwrite("c", &image_t::c);
-        
+
+
+// bbox_t_container looks like this:
+// struct bbox_t_container {
+//     bbox_t candidates[C_SHARP_MAX_OBJECTS];
+// };
+    py::class_<bbox_t_container>(m, "bbox_t_container")
+        .def(py::init<>())
+        .def_property("candidates", [](bbox_t_container &p)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<bbox_t>::format());
+            return pybind11::array(
+                dtype, 
+                { C_SHARP_MAX_OBJECTS }, 
+                { sizeof(bbox_t) }, 
+                p.candidates, 
+                nullptr
+            );
+            }, [](bbox_t_container& p) {});
+
     py::class_<Detector>(m, "Detector")
         .def(py::init<std::string, std::string, int, int>())
         .def("detect", detect_1, py::arg("image_filename"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
-        .def("detect_img", detect_2, py::arg("img"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
+        .def("detect", detect_2, py::arg("img"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
         .def("detectBatch", &Detector::detectBatch, py::arg("img"), py::arg("batch_size"), py::arg("width"), py::arg("height"), py::arg("thresh"), py::arg("make_nms") = true)
         .def_static("load_image", &Detector::load_image, py::arg("image_filename"))
         .def_static("free_image", &Detector::free_image, py::arg("m"))
@@ -54,7 +83,12 @@ PYBIND11_MODULE(libdarknetpy, m) {
         .def("get_net_color_depth", &Detector::get_net_color_depth)
         .def("tracking_id", &Detector::tracking_id, py::arg("cur_bbox_vec"), py::arg("change_history") = true, py::arg("frames_story") = 5, py::arg("max_dist") = 40)
 #ifdef OPENCV
-        .def("detect_mat", detect_3, py::arg("mat"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
+        // .def("detect", detect_3, py::arg("mat"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
+        // wrapper function for above
+        .def("detect_raw", [](Detector &d, std::vector<uint8_t> vdata) {
+            cv::Mat mat = imdecode(cv::Mat(vdata), 1);
+            return d.detect(mat);
+        })
 #endif
         .def("get_cuda_context", &Detector::get_cuda_context);
 #ifdef VERSION_INFO
