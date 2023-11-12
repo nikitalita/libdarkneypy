@@ -170,14 +170,33 @@ class CMakeBuild(build_ext):
 
         # Generate pyi modules
         stubgen_args = [
-            "--no-setup-py",
-            "--log-level=WARNING",
-            "--root-module-suffix=",
-            "--ignore-invalid=defaultarg",
+            "--root-suffix=''",
+            "--ignore-all-errors",
             "libdarknetpy",
         ]
-        pybind11_stubgen.main(stubgen_args)
+        # subprocess.run(
+        #     ["pybind11-stubgen"] + stubgen_args, cwd=build_temp, check=True
+        # )
+        args = pybind11_stubgen.arg_parser().parse_args(stubgen_args)
 
+        parser = pybind11_stubgen.stub_parser_from_args(args)
+        printer = pybind11_stubgen.Printer(invalid_expr_as_ellipses=not args.print_invalid_expressions_as_is)
+
+        out_dir, sub_dir = pybind11_stubgen.to_output_and_subdir(
+            output_dir=args.output_dir,
+            module_name=args.module_name,
+            root_suffix=args.root_suffix,
+        )
+
+        pybind11_stubgen.run(
+            parser,
+            printer,
+            args.module_name,
+            out_dir,
+            sub_dir=sub_dir,
+            dry_run=args.dry_run,
+            writer=pybind11_stubgen.Writer(stub_ext=args.stub_extension),
+        )
 
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.
@@ -186,6 +205,12 @@ setup(
     version="0.0.1",
     author="Dean Moldovan",
     author_email="dean0x7d@gmail.com",
+    data_files=[
+        (
+            'shared/typehints/python{}.{}/libdarknetpy'.format(*sys.version_info[:2]),
+            ["stubs/__init__.pyi"]
+        ),
+    ],
     description="A test project using pybind11 and CMake",
     long_description="",
     ext_modules=[CMakeExtension("libdarknetpy")],
