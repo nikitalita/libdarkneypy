@@ -38,6 +38,15 @@ pybind11_add_module(libdarknetpy src/main.cpp)
 find_package(Darknet CONFIG REQUIRED)
 target_link_libraries(libdarknetpy PRIVATE Darknet::dark)
 
+if(UNIX AND NOT CMAKE_COMPILER_IS_CLANG)
+  set(SHAREDLIB_CXX_FLAGS "-Wl,-Bsymbolic")
+  set(SHAREDLIB_C_FLAGS "-Wl,-Bsymbolic")
+endif()
+
+set(CMAKE_CXX_FLAGS "${SHAREDLIB_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
+set(CMAKE_C_FLAGS "${SHAREDLIB_C_FLAGS} ${CMAKE_C_FLAGS}")
+#add -Wl,-Bsymbolic to CMAKE_CXX_FLAGS  and CMAKE_C_FLAGS flags
+
 # EXAMPLE_VERSION_INFO is defined by setup.py and passed into the C++ code as a
 # define (VERSION_INFO) here.
 target_compile_definitions(libdarknetpy
