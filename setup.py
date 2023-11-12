@@ -134,16 +134,16 @@ class CMakeBuild(build_ext):
         build_temp = Path(self.build_temp) / ext.name
         if not build_temp.exists():
             build_temp.mkdir(parents=True)
-        # if not os.environ.get("VCPKG_ROOT"):
-        #     #install vcpkg
-        #     vcpkg_root = build_temp / "vcpkg"
-        #     subprocess.run(["git", "clone", "--depth=1", "https://github.com/microsoft/vcpkg.git", "vcpkg"], cwd=build_temp, check=True)
-        #     if sys.platform.startswith("win32"):
-        #         subprocess.run(["bootstrap-vcpkg.bat"], cwd=vcpkg_root, check=True)
-        #     else:
-        #         subprocess.run(["./bootstrap-vcpkg.sh"], cwd=vcpkg_root, check=True)
-        #     # Set vcpkg root
-        #     os.environ["VCPKG_ROOT"] = str(vcpkg_root)
+        if not os.environ.get("VCPKG_ROOT") and not os.environ.get("LIBDARKNETPY_NO_VCPKG"):
+            #install vcpkg
+            vcpkg_root = build_temp / "vcpkg"
+            subprocess.run(["git", "clone", "--depth=1", "https://github.com/microsoft/vcpkg.git", "vcpkg"], cwd=build_temp, check=True)
+            if sys.platform.startswith("win32"):
+                subprocess.run(["bootstrap-vcpkg.bat"], cwd=vcpkg_root, check=True)
+            else:
+                subprocess.run(["./bootstrap-vcpkg.sh"], cwd=vcpkg_root, check=True)
+            # Set vcpkg root
+            os.environ["VCPKG_ROOT"] = str(vcpkg_root)
         #include vcpkg toolchain file from VCPKG_ROOT
         if not os.environ.get("VCPKG_ROOT"):
             raise Exception("VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
