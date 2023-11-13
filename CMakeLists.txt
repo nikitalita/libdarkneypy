@@ -38,7 +38,7 @@ pybind11_add_module(libdarknetpy src/main.cpp)
 find_package(Darknet CONFIG REQUIRED)
 target_link_libraries(libdarknetpy PRIVATE Darknet::dark)
 
-if(UNIX AND NOT CMAKE_COMPILER_IS_CLANG)
+if(UNIX AND CMAKE_COMPILER_IS_GNU<CXX>)
   set(SHAREDLIB_CXX_FLAGS "-Wl,-Bsymbolic")
   set(SHAREDLIB_C_FLAGS "-Wl,-Bsymbolic")
 endif()
