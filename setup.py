@@ -3,6 +3,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import shutil
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -10,6 +11,93 @@ from setuptools.dist import Distribution
 from pybind11 import get_cmake_dir
 import pybind11_stubgen
 import importlib
+
+
+
+PYGIT2_EXISTS = False
+try:
+    import pygit2
+    PYGIT2_EXISTS = True
+except ImportError:
+    PYGIT2_EXISTS = False
+    pass
+
+
+def clone_repository(
+        url, path, bare=False, repository=None, remote=None,
+        checkout_branch=None, callbacks=None, depth=0):
+    """
+    Clones a new Git repository from *url* in the given *path*.
+    Modded version of the pygit2 clone_repository function that allows for shallow clones
+    
+    Returns: a Repository class pointing to the newly cloned repository.
+
+    Parameters:
+
+    url : str
+        URL of the repository to clone.
+    path : str
+        Local path to clone into.
+    bare : bool
+        Whether the local repository should be bare.
+    remote : callable
+        Callback for the remote to use.
+
+        The remote callback has `(Repository, name, url) -> Remote` as a
+        signature. The Remote it returns will be used instead of the default
+        one.
+    repository : callable
+        Callback for the repository to use.
+
+        The repository callback has `(path, bare) -> Repository` as a
+        signature. The Repository it returns will be used instead of creating a
+        new one.
+    checkout_branch : str
+        Branch to checkout after the clone. The default is to use the remote's
+        default branch.
+    callbacks : RemoteCallbacks
+        Object which implements the callbacks as methods.
+
+        The callbacks should be an object which inherits from
+        `pyclass:RemoteCallbacks`.
+    depth : int
+        Depth to clone.
+
+        If greater than zero, the clone will be a shallow clone.
+        Defaults to 0 (unshallow).
+    """
+    if not PYGIT2_EXISTS:
+        raise Exception("pygit2 not found, please install pygit2 and try again")
+    from pygit2 import git_clone_options, git_fetch_options, RemoteCallbacks, Repository
+    from pygit2.ffi import ffi, C
+    from pygit2.utils import to_bytes
+
+
+    if callbacks is None:
+        callbacks = RemoteCallbacks()
+
+    # Add repository and remote to the payload
+    payload = callbacks
+    payload.repository = repository
+    payload.remote = remote
+
+    with git_clone_options(payload):
+        opts = payload.clone_options
+        opts.bare = bare
+
+        if checkout_branch:
+            checkout_branch_ref = ffi.new('char []', to_bytes(checkout_branch))
+            opts.checkout_branch = checkout_branch_ref
+
+        with git_fetch_options(payload, opts=opts.fetch_opts):
+            opts.fetch_opts.depth = depth
+            crepo = ffi.new('git_repository **')
+            err = C.git_clone(crepo, to_bytes(url), to_bytes(path), opts)
+            payload.check_error(err)
+
+    # Ok
+    return Repository._from_c(crepo[0], owned=True)
+
 
 # Convert distutils Windows platform specifiers to CMake -A arguments
 PLAT_TO_CMAKE = {
@@ -136,15 +224,8 @@ class CMakeBuild(build_ext):
         if not build_temp.exists():
             build_temp.mkdir(parents=True)
         if not os.environ.get("VCPKG_ROOT") and not os.environ.get("LIBDARKNETPY_NO_VCPKG"):
-            #install vcpkg
-            vcpkg_root = build_temp / "vcpkg"
-            subprocess.run(["git", "clone", "--depth=1", "https://github.com/microsoft/vcpkg.git", "vcpkg"], cwd=build_temp, check=True)
-            if sys.platform.startswith("win32"):
-                subprocess.run(["bootstrap-vcpkg.bat"], cwd=vcpkg_root, check=True)
-            else:
-                subprocess.run(["./bootstrap-vcpkg.sh"], cwd=vcpkg_root, check=True)
-            # Set vcpkg root
-            os.environ["VCPKG_ROOT"] = str(vcpkg_root)
+            self.install_vcpkg(build_temp)
+        print("VCPKG_ROOT set to {}".format(os.environ.get("VCPKG_ROOT")))
         #include vcpkg toolchain file from VCPKG_ROOT
         if not os.environ.get("VCPKG_ROOT"):
             raise Exception("VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
@@ -163,6 +244,67 @@ class CMakeBuild(build_ext):
         )
         # This isn't working right now
         # self.generate_pyi(build_temp)
+
+    def check_git_cli(self):
+        try:
+            subprocess.run(["git", "--version"], check=True)
+        except subprocess.CalledProcessError:
+            return False
+        return True
+
+    def check_git(self) -> bool:
+        if PYGIT2_EXISTS:
+            return True
+        return self.check_git_cli()
+        
+    def git_pull(self, target: Path):
+        if PYGIT2_EXISTS:
+            print("USING PYGIT2")
+            repo = pygit2.Repository(str(target))
+            repo.remotes["origin"].fetch()
+            repo.checkout(repo.head.name)
+            repo.set_head(repo.head.name)
+        else:
+            print("USING COMMAND LINE!!!")
+            subprocess.run(["git", "pull"], cwd=target, check=True)
+ 
+    def git_clone(self, target: Path, url: str):
+        if PYGIT2_EXISTS:
+            print("USING PYGIT2")
+            clone_repository(url, str(target), depth=1)
+        else:
+            print("USING COMMAND LINE!!!")
+            subprocess.run(["git", "clone", "--depth=1", url, "vcpkg"], cwd=target, check=True)
+
+    def install_vcpkg(self, build_temp: Path):
+        try:
+            os.environ["VCPKG_DISABLE_METRICS"] = "true"
+            print("VCPKG_ROOT not set, attempting to install vcpkg")
+            vcpkg_root = build_temp / "vcpkg"
+            vcpkg_exists = False
+            if not self.check_git():
+                raise Exception("git not found, please install git and try again")
+            if (vcpkg_root.exists()):
+                print("vcpkg already exists, attempting to update")
+                # try git pull first; check if it fails
+                try:
+                    self.git_pull(vcpkg_root)
+                    vcpkg_exists = True
+                except subprocess.CalledProcessError:
+                    print("Failed to update vcpkg, removing and re-cloning")
+                    shutil.rmtree(vcpkg_root)
+            if not vcpkg_exists:
+                # clone vcpkg
+                self.git_clone(vcpkg_root, "https://github.com/microsoft/vcpkg.git")
+            if sys.platform.startswith("win32"):
+                subprocess.run(["bootstrap-vcpkg.bat"], cwd=vcpkg_root, check=True)
+            else:
+                subprocess.run(["./bootstrap-vcpkg.sh"], cwd=vcpkg_root, check=True)
+            # Set vcpkg root
+            os.environ["VCPKG_ROOT"] = str(vcpkg_root)
+        except subprocess.CalledProcessError:
+            raise Exception("Failed to detect and install vcpkg, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
+
         
     def generate_pyi(self, build_temp) -> None:
         # Configure custom loader
