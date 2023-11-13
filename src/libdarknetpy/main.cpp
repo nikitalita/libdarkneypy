@@ -1,6 +1,7 @@
+#include "yolo_v2_class.hpp"
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include "yolo_v2_class.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/functional.h>
 #include <pybind11/stl_bind.h>

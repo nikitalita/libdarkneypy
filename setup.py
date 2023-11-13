@@ -6,6 +6,7 @@ from pathlib import Path
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.dist import Distribution
 from pybind11 import get_cmake_dir
 import pybind11_stubgen
 import importlib
@@ -198,25 +199,28 @@ class CMakeBuild(build_ext):
             writer=pybind11_stubgen.Writer(stub_ext=args.stub_extension),
         )
 
+
+class LibdarknetpyDistribution(Distribution):
+    def has_ext_modules(self):
+        return True
+
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.
 setup(
     name="libdarknetpy",
     version="0.0.1",
-    author="Dean Moldovan",
-    author_email="dean0x7d@gmail.com",
-    data_files=[
-        (
-            'shared/typehints/python{}.{}/libdarknetpy'.format(*sys.version_info[:2]),
-            ["stubs/__init__.pyi"]
-        ),
-    ],
+    author="NikitaLita",
+    author_email="nikitalita@fakeemail.com",
     description="A test project using pybind11 and CMake",
     long_description="",
-    ext_modules=[CMakeExtension("libdarknetpy")],
+    packages=["libdarknetpy"],
+    package_data={"libdarknetpy": ["py.typed", "*.so", "*.pyi"]},
+    package_dir={"libdarknetpy": "src/libdarknetpy"},
+    ext_modules=[CMakeExtension("libdarknetpy._libdarknetpy")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},
     python_requires=">=3.7",
+    distclass=LibdarknetpyDistribution,
     requires=["pybind11"]
 )
