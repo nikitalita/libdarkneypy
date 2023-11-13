@@ -22,7 +22,8 @@ std::vector<bbox_t> (Detector::*detect_1)(std::string, float, bool) = &Detector:
 std::vector<bbox_t> (Detector::*detect_2)(image_t, float, bool) = &Detector::detect;
 std::vector<bbox_t> (Detector::*detect_3)(cv::Mat, float, bool) = &Detector::detect;
 
-PYBIND11_MODULE(libdarknetpy, m) {
+PYBIND11_MODULE(_libdarknetpy, m)
+{
     m.doc() = "libdarknetpy module";
     m.def("init", &init, py::arg("configurationFilename"), py::arg("weightsFilename"), py::arg("gpu") = 0, py::arg("batch_size") = 1, "Initialize the detector");
     m.def("detect_image", &detect_image, py::arg("filename"), py::arg("container"), "Detect objects in an image");
@@ -73,7 +74,8 @@ PYBIND11_MODULE(libdarknetpy, m) {
             }, [](bbox_t_container& p) {});
 
     py::class_<Detector>(m, "Detector")
-        .def(py::init<std::string, std::string, int, int>())
+        .def(py::init<std::string, std::string, int, int>(),
+             py::arg("configurationFilename"), py::arg("weightsFilename"), py::arg("gpu") = 0, py::arg("batch_size") = 1)
         .def("detect", detect_1, py::arg("image_filename"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
         .def("detect", detect_2, py::arg("img"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
         .def("detectBatch", &Detector::detectBatch, py::arg("img"), py::arg("batch_size"), py::arg("width"), py::arg("height"), py::arg("thresh"), py::arg("make_nms") = true)
@@ -86,10 +88,10 @@ PYBIND11_MODULE(libdarknetpy, m) {
 #ifdef OPENCV
         // .def("detect", detect_3, py::arg("mat"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
         // wrapper function for above
-        .def("detect_raw", [](Detector &d, std::vector<uint8_t> vdata) {
+        .def("detect_raw", [](Detector &d, std::vector<uint8_t> vdata)
+             {
             cv::Mat mat = imdecode(cv::Mat(vdata), 1);
-            return d.detect(mat);
-        })
+            return d.detect(mat); })
 #endif
         .def("get_cuda_context", &Detector::get_cuda_context);
 #ifdef VERSION_INFO
