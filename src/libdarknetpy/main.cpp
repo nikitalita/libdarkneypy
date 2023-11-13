@@ -88,10 +88,12 @@ PYBIND11_MODULE(_libdarknetpy, m)
 #ifdef OPENCV
         // .def("detect", detect_3, py::arg("mat"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
         // wrapper function for above
-        .def("detect_raw", [](Detector &d, std::vector<uint8_t> vdata)
-             {
+        .def(
+            "detect_raw", [](Detector &d, std::vector<uint8_t> vdata)
+            {
             cv::Mat mat = imdecode(cv::Mat(vdata), 1);
-            return d.detect(mat); })
+            return d.detect(mat); },
+            py::arg("vdata"))
 #endif
         .def("get_cuda_context", &Detector::get_cuda_context);
 #ifdef VERSION_INFO
