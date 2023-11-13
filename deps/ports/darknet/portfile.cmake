@@ -30,6 +30,20 @@ endif()
 file(REMOVE_RECURSE "${SOURCE_PATH}/3rdparty")
 file(REMOVE_RECURSE "${SOURCE_PATH}/cmake/Modules")
 
+# check if the compile target is x86_64 or arm64
+# we can just check the target triplet
+if (VCPKG_TARGET_TRIPLET MATCHES "x64-.*")
+  set(ARCH "x64")
+elseif (VCPKG_TARGET_TRIPLET MATCHES "arm64-.*")
+  set(ARCH "arm64")
+endif()
+
+set(ENABLE_SSE_AND_AVX_FLAGS FALSE)
+if (ARCH MATCHES "x64")
+  set(ENABLE_SSE_AND_AVX_FLAGS TRUE)
+endif()
+
+
 vcpkg_cmake_configure(
   SOURCE_PATH "${SOURCE_PATH}"
   DISABLE_PARALLEL_CONFIGURE
@@ -37,6 +51,7 @@ vcpkg_cmake_configure(
     -DINSTALL_BIN_DIR:STRING=bin
     -DINSTALL_LIB_DIR:STRING=lib
     -DENABLE_OPENCV:BOOL=${ENABLE_OPENCV}
+    -DENABLE_SSE_AND_AVX_FLAGS:BOOL=${ENABLE_SSE_AND_AVX_OPTION}
 )
 
 vcpkg_cmake_install()
