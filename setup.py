@@ -8,6 +8,10 @@ import shutil
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 from setuptools.dist import Distribution
+if sys.version_info < (3, 12):
+    from setuptools._distutils.util import get_platform
+else:
+    from sysconfig import get_platform
 from pybind11 import get_cmake_dir
 import pybind11_stubgen
 import importlib
@@ -20,6 +24,7 @@ install_vcpkg_path = os.path.join(current_dir, "helpers", "install_vcpkg.py")
 install_vcpkg_module = SourceFileLoader("install_vcpkg", install_vcpkg_path).load_module()
 install_vcpkg = install_vcpkg_module.install_vcpkg
 get_baseline_from_vcpkgjson = install_vcpkg_module.get_baseline_from_vcpkgjson
+get_vcpkg_static_triplet = install_vcpkg_module.get_vcpkg_static_triplet
 
 # Convert distutils Windows platform specifiers to CMake -A arguments
 PLAT_TO_CMAKE = {
@@ -61,13 +66,17 @@ class CMakeBuild(build_ext):
         # Must be in this form due to bug in .resolve() only fixed in Python 3.10+
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-
         # Using this requires trailing slash for auto-detection & inclusion of
         # auxiliary "native" libs
+        plat_name : str = self.plat_name
 
         debug = int(os.environ.get("DEBUG", 0)) if self.debug is None else self.debug
         cfg = "Debug" if debug else "Release"
 
+        # get the target triplet
+        target_triplet = os.environ.get("VCPKG_DEFAULT_TRIPLET", get_vcpkg_static_triplet(plat_name))
+        os.environ["VCPKG_DEFAULT_TRIPLET"] = target_triplet
+        
         # CMake lets you override the generator - we need to check this.
         # Can be set with Conda-Build, for example.
         cmake_generator = os.environ.get("CMAKE_GENERATOR", "")
@@ -98,7 +107,6 @@ class CMakeBuild(build_ext):
             if not cmake_generator or cmake_generator == "Ninja":
                 try:
                     import ninja
-
                     ninja_executable_path = Path(ninja.BIN_DIR) / "ninja"
                     cmake_args += [
                         "-GNinja",
@@ -154,19 +162,19 @@ class CMakeBuild(build_ext):
         #include vcpkg toolchain file from VCPKG_ROOT
         if not os.environ.get("VCPKG_ROOT"):
             raise Exception("VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
-        if not os.environ.get("VCPKG_DEFAULT_TRIPLET"):
-            if sys.platform.startswith("win32"):
-                os.environ["VCPKG_DEFAULT_TRIPLET"] = "x64-windows-static-md"
-            # We don't need to set it for linux and mac because they compile statically by default
+
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE={}".format(os.environ.get("VCPKG_ROOT") + "/scripts/buildsystems/vcpkg.cmake")]
+        cmake_args += ["-DVCPKG_TARGET_TRIPLET={}".format(target_triplet)]
         # set pybind11_DIR
         cmake_args += ["-Dpybind11_DIR={}".format(get_cmake_dir())]
         subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
+            ["cmake", ext.sourcedir, *cmake_args], env=os.environ, cwd=build_temp, check=True, 
         )
         subprocess.run(
-            ["cmake", "--build", ".", *build_args], cwd=build_temp, check=True
+            ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp, check=True
         )
+        
+        
         # This isn't working right now
         # self.generate_pyi(build_temp)
         
@@ -227,6 +235,9 @@ setup(
     packages=["libdarknetpy"],
     package_data={"libdarknetpy": ["py.typed", "*.so", "*.pyi"]},
     package_dir={"libdarknetpy": "src/libdarknetpy"},
+    data_files=[
+        
+    ],
     ext_modules=[CMakeExtension("libdarknetpy._libdarknetpy")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,

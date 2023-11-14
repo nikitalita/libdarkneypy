@@ -216,3 +216,33 @@ def install_vcpkg(build_temp: Path, baseline_commit: str):
     except subprocess.CalledProcessError:
         raise Exception("Failed to detect and install vcpkg, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
 
+def get_vcpkg_triplet(plat_name: str) -> str:
+    arch :str 
+    if plat_name.find("amd64") != -1 or plat_name.find("x86_64") != -1 or plat_name.find("x64") != -1:
+        arch = "x64"
+    elif plat_name.find("x86") != -1 or plat_name.find("i686") != -1 or plat_name.find("i386") != -1 or plat_name.find("i586") != -1 or plat_name.find("win32") != -1:
+        arch = "x86"
+    elif plat_name.find("arm64") != -1 or plat_name.find("aarch64") != -1:
+        arch = "arm64"
+    elif plat_name.find("arm") != -1 or plat_name.find("arm32") != -1:
+        arch = "arm"
+    target_os:str
+    if plat_name.find("linux") != -1:
+        target_os = "linux"
+    elif plat_name.find("macos") != -1 or plat_name.find("osx") != -1 or plat_name.find("darwin") != -1:
+        target_os = "osx"
+    elif plat_name.find("win") != -1:
+        target_os = "windows"
+    return f"{arch}-{target_os}"
+
+def get_vcpkg_static_triplet(plat_name: str) -> str:
+    triplet = get_vcpkg_triplet(plat_name)
+    if triplet.find("windows") != -1:
+        triplet += "-static"
+    return triplet
+
+def get_vcpkg_static_md_triplet(plat_name: str) -> str:
+    triplet = get_vcpkg_triplet(plat_name)
+    if triplet.find("windows") != -1:
+        triplet += "-static-md"
+    return triplet
