@@ -6,7 +6,8 @@ import os
 import platform
 
 PYGIT2_EXISTS = False
-if not os.environ.get("INSTALL_VCPKG_USE_CLI_GIT"):
+# check python >= 3.8
+if sys.version_info >= (3, 8) and not (os.environ.get("INSTALL_VCPKG_USE_CLI_GIT")):
     try:
         import pygit2
         PYGIT2_EXISTS = True
@@ -90,7 +91,7 @@ def clone_repository(
     # Ok
     return Repository._from_c(crepo[0], owned=True)
 
-def fetch(self:pygit2.Remote, refspecs=None, message=None, callbacks=None, prune=0, proxy=None, depth=0):
+def fetch(self, refspecs=None, message=None, callbacks=None, prune=0, proxy=None, depth=0):
     """Perform a fetch against this remote. Returns a <TransferProgress>
     object.
     Modified version of the pygit2 fetch function that allows for shallow clones
@@ -117,6 +118,8 @@ def fetch(self:pygit2.Remote, refspecs=None, message=None, callbacks=None, prune
         If greater than zero, the clone will be a shallow clone.
         Defaults to 0 (unshallow).
     """
+    if not PYGIT2_EXISTS:
+        raise Exception("pygit2 not found, please install pygit2 and try again")
     from pygit2 import git_fetch_options
     from pygit2.ffi import C
     from pygit2.utils import to_bytes, StrArray
@@ -140,6 +143,7 @@ def git_init(target: Path, url: str):
         repo = pygit2.init_repository(str(target), bare=False)
         repo.remotes.create("origin", url)
     else:
+        target.mkdir(parents=True, exist_ok=True)
         subprocess.run(["git", "init"], cwd=target, check=True)
         subprocess.run(["git", "remote", "add", "origin", url], cwd=target, check=True)
 
@@ -148,8 +152,7 @@ def git_pull(target: Path, baseline_commit: str = None):
         print("USING PYGIT2")
         repo = pygit2.Repository(str(target))
         if (repo.is_bare or len(repo.remotes) == 0 or repo.remotes["origin"] is None):
-            # just re-init it after removing the dir
-            raise Exception("git repo not found, please remove the vcpkg directory and try again")
+            raise Exception("git repo not found, please remove the directory and try again")
         refspecs = [baseline_commit] if baseline_commit else None
         fetch(repo.remotes["origin"], refspecs = refspecs, depth=1)
         fetch_head_ref = repo.lookup_reference("FETCH_HEAD")
@@ -166,8 +169,9 @@ def git_clone(target: Path, url: str, baseline_commit: str = None):
         if PYGIT2_EXISTS:
                 clone_repository(url, str(target), depth=1)
         else:
-            subprocess.run(["git", "clone", "--depth=1", url, "vcpkg"], cwd=target, check=True)
-
+            target_base_dir = (target / "..").resolve()
+            target_last_part = target.name
+            subprocess.run(["git", "clone", "--depth=1", url, target_last_part], cwd=target_base_dir, check=True)
 
 def check_git_cli():
     try:
@@ -192,7 +196,6 @@ def get_baseline_from_vcpkgjson(vcpkg_json_path: Path) -> str:
 def install_vcpkg(build_temp: Path, baseline_commit: str) -> Path:
     try:
         os.environ["VCPKG_DISABLE_METRICS"] = "true"
-        print("VCPKG_ROOT not set, attempting to install vcpkg")
         vcpkg_root = build_temp / "vcpkg"
         vcpkg_exists = False
         if not check_git():
