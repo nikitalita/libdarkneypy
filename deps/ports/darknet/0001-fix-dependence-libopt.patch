@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 89213ec7..6b7911c1 100644
+index 89213ec7..fcfe140b 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -243,10 +243,24 @@ if(ENABLE_OPENCV)
+@@ -243,10 +243,48 @@ if(ENABLE_OPENCV)
    endif()
  endif()
  find_package(Stb REQUIRED)
@@ -10,23 +10,47 @@ index 89213ec7..6b7911c1 100644
  
 -if(APPLE AND NOT OPENMP_FOUND)
 -  message(STATUS "  ->  To enable OpenMP on macOS, please install libomp from Homebrew")
-+if(APPLE)
-+  # libomp 15.0+ from brew is keg-only, so have to search in other locations.
-+  # See https://github.com/Homebrew/homebrew-core/issues/112107#issuecomment-1278042927.
-+  execute_process(COMMAND brew --prefix libomp
-+                  OUTPUT_VARIABLE HOMEBREW_LIBOMP_PREFIX
-+                  OUTPUT_STRIP_TRAILING_WHITESPACE)
-+  set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
-+  set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
-+  set(OpenMP_C_LIB_NAMES omp)
-+  set(OpenMP_CXX_LIB_NAMES omp)
-+  set(OpenMP_omp_LIBRARY ${HOMEBREW_LIBOMP_PREFIX}/lib/libomp.dylib)
-+  find_package(OpenMP)
-+  if(NOT OPENMP_FOUND)
-+    message(STATUS "  ->  To enable OpenMP on macOS, please install libomp from Homebrew")
++FIND_PACKAGE (OpenMP QUIET) # optional
++if (NOT(OPENMP_FOUND))
++  if(APPLE)
++    # libomp 15.0+ from brew is keg-only, so have to search in other locations.
++    # See https://github.com/Homebrew/homebrew-core/issues/112107#issuecomment-1278042927.
++
++    # check if the host triplet does not equal the target triplet
++    set(brew_command brew)
++    set(CROSS_COMPILING_DETECTED FALSE)
++    if ((${CMAKE_HOST_SYSTEM_PROCESSOR} MATCHES "arm64") AND (${VCPKG_TARGET_TRIPLET} MATCHES "x64"))
++      set(brew_command "/usr/local/bin/brew")
++      set(CROSS_COMPILING_DETECTED TRUE)
++    elseif ((${CMAKE_HOST_SYSTEM_PROCESSOR} MATCHES "x86_64") AND (${VCPKG_TARGET_TRIPLET} MATCHES "arm64"))
++      set(brew_command "/opt/homebrew/bin/brew")
++      set(CROSS_COMPILING_DETECTED TRUE)
++    endif()
++    message(STATUS "CROSS_COMPILING_DETECTED: ${CROSS_COMPILING_DETECTED}")
++    execute_process(COMMAND ${brew_command} --prefix libomp
++                    OUTPUT_VARIABLE HOMEBREW_LIBOMP_PREFIX
++                    OUTPUT_STRIP_TRAILING_WHITESPACE)
++    if (HOMEBREW_LIBOMP_PREFIX)
++      message(STATUS "  ->  Found libomp at ${HOMEBREW_LIBOMP_PREFIX}")
++      set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
++      set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
++      set(OpenMP_C_LIB_NAMES omp)
++      set(OpenMP_CXX_LIB_NAMES omp)
++      set(OpenMP_omp_LIBRARY ${HOMEBREW_LIBOMP_PREFIX}/lib/libomp.dylib)
++      find_package(OpenMP)  
++    else()
++      message(STATUS "  ->  libomp not found")
++    endif()
++    if(NOT OPENMP_FOUND)
++      if (CROSS_COMPILING_DETECTED)
++        message(STATUS "  ->  To enable OpenMP on macOS, please install libomp from Homebrew for the target machine")
++      else()
++        message(STATUS "  ->  To enable OpenMP on macOS, please install libomp from Homebrew")
++      endif()
++    endif()
++  else()
++    message(STATUS "OpenMP not found, not enabling it")
 +  endif()
-+else()
-+  find_package(OpenMP)
  endif()
  
  set(ADDITIONAL_CXX_FLAGS "-Wall -Wno-unused-result -Wno-unknown-pragmas -Wfatal-errors -Wno-deprecated-declarations -Wno-write-strings")
