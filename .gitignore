@@ -5,6 +5,9 @@ _generate/
 *.so
 *.py[cod]
 *.egg-info
-*env*
+__pycache__/
+**/__pycache__/
+.venv
+venv
 vcpkg_installed/
 .vscode/
