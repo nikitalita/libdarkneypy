@@ -25,6 +25,9 @@ install_vcpkg_module = SourceFileLoader("install_vcpkg", install_vcpkg_path).loa
 install_vcpkg = install_vcpkg_module.install_vcpkg
 get_baseline_from_vcpkgjson = install_vcpkg_module.get_baseline_from_vcpkgjson
 get_vcpkg_static_triplet = install_vcpkg_module.get_vcpkg_static_triplet
+make_vcpkg_universal2_binaries = install_vcpkg_module.make_vcpkg_universal2_binaries
+install_vcpkg_manifest = install_vcpkg_module.install_vcpkg_manifest
+install_vcpkg_universal2_binaries = install_vcpkg_module.install_vcpkg_universal2_binaries
 
 # Convert distutils Windows platform specifiers to CMake -A arguments
 PLAT_TO_CMAKE = {
@@ -158,15 +161,32 @@ class CMakeBuild(build_ext):
             vcpkg_json_path = self.get_root(ext) / "vcpkg.json"
             baseline = get_baseline_from_vcpkgjson(vcpkg_json_path)
             install_vcpkg(build_temp, baseline)
+        vcpkg_root = Path(os.environ.get("VCPKG_ROOT"))
         print("VCPKG_ROOT set to {}".format(os.environ.get("VCPKG_ROOT")))
         #include vcpkg toolchain file from VCPKG_ROOT
         if not os.environ.get("VCPKG_ROOT"):
             raise Exception("VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
-
-        cmake_args += ["-DCMAKE_TOOLCHAIN_FILE={}".format(os.environ.get("VCPKG_ROOT") + "/scripts/buildsystems/vcpkg.cmake")]
+        toolchain_file = vcpkg_root / "scripts" / "buildsystems" / "vcpkg.cmake"
+        cmake_args += ["-DCMAKE_TOOLCHAIN_FILE={}".format(str(toolchain_file))]
         cmake_args += ["-DVCPKG_TARGET_TRIPLET={}".format(target_triplet)]
         # set pybind11_DIR
         cmake_args += ["-Dpybind11_DIR={}".format(get_cmake_dir())]
+
+        if (target_triplet == "universal2-osx"):
+            
+            # # we have to run vcpkg install for both x86_64 and arm64
+            # # and then merge the results
+            # vcpkg_installed_dir = build_temp / "vcpkg_installed"
+            # uni2_triplet = install_vcpkg_universal2_binaries(ext.sourcedir, vcpkg_installed_dir, vcpkg_root)
+            # uni2_dir = vcpkg_installed_dir / uni2_triplet
+            # cmake_args += ["-DCMAKE_PREFIX_PATH={}".format(str(uni2_dir))]
+            # # skip install
+            # cmake_args += ["-DVCPKG_MANIFEST_INSTALL=OFF"]
+            
+            # This isn't working yet
+            raise Exception("universal2-osx not supported yet")
+
+
         subprocess.run(
             ["cmake", ext.sourcedir, *cmake_args], env=os.environ, cwd=build_temp, check=True, 
         )

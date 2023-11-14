@@ -3,6 +3,8 @@ import shutil
 import subprocess
 import sys
 import os
+import platform
+
 PYGIT2_EXISTS = False
 if not os.environ.get("INSTALL_VCPKG_USE_CLI_GIT"):
     try:
@@ -187,7 +189,7 @@ def get_baseline_from_vcpkgjson(vcpkg_json_path: Path) -> str:
         builtin_baseline = vcpkg_json["builtin-baseline"]
     return builtin_baseline
 
-def install_vcpkg(build_temp: Path, baseline_commit: str):
+def install_vcpkg(build_temp: Path, baseline_commit: str) -> Path:
     try:
         os.environ["VCPKG_DISABLE_METRICS"] = "true"
         print("VCPKG_ROOT not set, attempting to install vcpkg")
@@ -213,6 +215,7 @@ def install_vcpkg(build_temp: Path, baseline_commit: str):
             subprocess.run(["./bootstrap-vcpkg.sh"], cwd=vcpkg_root, check=True)
         # Set vcpkg root
         os.environ["VCPKG_ROOT"] = str(vcpkg_root)
+        return vcpkg_root
     except subprocess.CalledProcessError:
         raise Exception("Failed to detect and install vcpkg, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
 
@@ -226,6 +229,8 @@ def get_vcpkg_triplet(plat_name: str) -> str:
         arch = "arm64"
     elif plat_name.find("arm") != -1 or plat_name.find("arm32") != -1:
         arch = "arm"
+    elif plat_name.find("universal2") != -1:
+        arch = "universal2"
     target_os:str
     if plat_name.find("linux") != -1:
         target_os = "linux"
@@ -246,3 +251,99 @@ def get_vcpkg_static_md_triplet(plat_name: str) -> str:
     if triplet.find("windows") != -1:
         triplet += "-static-md"
     return triplet
+
+def install_vcpkg_manifest(sourcedir: Path, install_dir: Path = None, vcpkg_triplet: str = None, vcpkg_root:Path = None, **kwargs):
+    if not vcpkg_root:
+        vcpkg_root = Path(os.environ["VCPKG_ROOT"])
+    vcpkg_exe = vcpkg_root / ("vcpkg" + (".exe" if sys.platform.startswith("win32") else ""))
+    args = [str(vcpkg_exe), "install"]
+    if vcpkg_triplet:
+        args += ["--triplet", vcpkg_triplet]
+        
+    if install_dir:
+        args += ["--x-install-root", str(install_dir)]
+    args += ["--vcpkg-root", str(vcpkg_root)]
+    if kwargs:
+        for key, value in kwargs.items():
+            args += [f"--{key}", str(value)]
+            
+    # copy os.environ and add VCPKG_ROOT to it
+    env = os.environ.copy()
+    env["VCPKG_ROOT"] = str(vcpkg_root)
+    env["VCPKG_DEFAULT_TRIPLET"] = vcpkg_triplet
+    subprocess.run(args, cwd=sourcedir,env=env, check=True)
+
+# COPIED AND pasted from lipo_dir_merge because of depedenency issues
+def make_merger(primary_path, secondary_path):
+    # Merge the libraries at `src1` and `src2` and create a
+    # universal binary at `dst`
+    def merge_libs(src1, src2, dst):
+        subprocess.run(["lipo", "-create", src1, src2, "-output", dst])
+
+    # Find the library at `src` in the `secondary_path` and then
+    # merge the two versions, creating a universal binary at `dst`.
+    def find_and_merge_libs(src, dst):
+        rel_path = os.path.relpath(src, primary_path)
+        lib_in_secondary = os.path.join(secondary_path, rel_path)
+
+        if os.path.exists(lib_in_secondary) == False:
+            print("Lib not found in secondary source: {}".format(lib_in_secondary))
+            return
+        
+        merge_libs(src, lib_in_secondary, dst)
+
+    # Either copy the file at `src` to `dst`, or, if it is a static
+    # library, merge it with its version from `secondary_path` and
+    # write the universal binary to `dst`.
+    def copy_file_or_merge_libs(src, dst, *, follow_symlinks=True):
+        _, file_ext = os.path.splitext(src)
+        if file_ext == ".a":
+            find_and_merge_libs(src, dst)
+        else:
+            shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+    return copy_file_or_merge_libs
+
+def lipo_dir_merge(primary_path, secondary_path, destination_path):
+    shutil.copytree(primary_path, destination_path, copy_function=make_merger(primary_path, secondary_path))
+
+def make_vcpkg_universal2_binaries(vcpkg_install_root: Path, arm64_triplet: str = "arm64-osx", x64_triplet: str = "x64-osx") -> str:
+    """
+    Make universal2 binaries
+    Run this after vcpkg install of both x64 and arch64 binaries
+    """
+    arm64 = vcpkg_install_root / arm64_triplet
+    x64 = vcpkg_install_root / x64_triplet
+    universal2 = vcpkg_install_root / "universal2-osx"
+    lipo_dir_merge(arm64, x64, universal2)
+    return "universal2-osx"
+
+def install_vcpkg_universal2_binaries(sourcedir: Path, install_dir: Path = None, vcpkg_root: Path = None, arm64_triplet: str = "arm64-osx", x64_triplet: str = "x64-osx"):
+    """
+    install universal2 binaries
+    vcpkg installs both x64 and arch64 binaries and then lipos them together
+    """
+    if not vcpkg_root:
+        vcpkg_root = Path(os.environ["VCPKG_ROOT"])
+    # check the host processor
+    cross_install_dir = (install_dir / ".." / "cross_installed").resolve()
+    host_install_dir = (install_dir / ".." / "host_installed").resolve()
+    cross_install_triplet: str
+    host_install_triplet: str
+    # we need to install the non-host triplets to a temp directory first before merging, otherwise vcpkg just uninstalls them
+    if platform.machine() != "arm64":
+        cross_install_triplet = arm64_triplet
+        host_install_triplet = x64_triplet
+    else:
+        cross_install_triplet = x64_triplet
+        host_install_triplet = arm64_triplet
+    install_vcpkg_manifest(sourcedir, host_install_dir, host_install_triplet, vcpkg_root)
+    install_vcpkg_manifest(sourcedir, cross_install_dir, cross_install_triplet, vcpkg_root)
+    # move the files from the temp directory to the install directory
+    shutil.move(cross_install_dir / cross_install_triplet, host_install_dir / cross_install_triplet)
+    shutil.rmtree(cross_install_dir, ignore_errors=True)
+    uni2_triplet = make_vcpkg_universal2_binaries(host_install_dir, arm64_triplet, x64_triplet)
+    shutil.rmtree(install_dir, ignore_errors=True)
+    shutil.move(host_install_dir, install_dir)
+    return uni2_triplet
+
+    # Make universal2 binaries
