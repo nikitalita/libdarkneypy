@@ -13,10 +13,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.8", "3.10"]
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
 
     # The setup-miniconda action needs this to activate miniconda
     defaults:
@@ -27,7 +27,21 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
+      - name: Install deps
+        run: choco install wget 7zip
+        if: matrix.os == 'windows-latest'  
 
+      - name: Install deps
+        run: brew install yasm nasm pkg-config 7zip wget
+        if: matrix.os == 'macos-latest'
+
+      # We also run out of space on ubuntu if we don't do an apt-get clean after installing
+      - name: Update apt and install deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt-get install -y yasm nasm gperf libgles2-mesa-dev libx11-dev libxft-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxdamage-dev libxinerama-dev libdbus-1-dev libxtst-dev build-essential g++ apt-transport-https ca-certificates gnupg software-properties-common wget zlib1g p7zip-full
+          sudo apt-get clean
       - name: Get conda
         uses: conda-incubator/setup-miniconda@v2.2.0
         with:

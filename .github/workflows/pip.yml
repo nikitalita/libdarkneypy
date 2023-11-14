@@ -13,10 +13,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
         python-version: ["3.7", "3.11"]
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v3
@@ -26,6 +26,22 @@ jobs:
     - uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+
+    - name: Install deps
+      run: choco install wget 7zip
+      if: matrix.os == 'windows-latest'  
+
+    - name: Install deps
+      run: brew install yasm nasm pkg-config 7zip wget
+      if: matrix.os == 'macos-latest'
+
+    # We also run out of space on ubuntu if we don't do an apt-get clean after installing
+    - name: Update apt and install deps
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt update
+        sudo apt-get install -y yasm nasm gperf libgles2-mesa-dev libx11-dev libxft-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxdamage-dev libxinerama-dev libdbus-1-dev libxtst-dev build-essential g++ apt-transport-https ca-certificates gnupg software-properties-common wget zlib1g p7zip-full
+        sudo apt-get clean
 
     - name: Add requirements
       run: python -m pip install --upgrade wheel setuptools
