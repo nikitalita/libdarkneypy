@@ -1,12 +1,13 @@
 {
-    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-    "dependencies": [
-      {
-        "name": "darknet",
-        "default-features": false,
-        "features": [
-          "opencv-base"
-        ]
-      }
-    ]
-  }
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "dependencies": [
+    {
+      "name": "darknet",
+      "default-features": false,
+      "features": [
+        "opencv-base"
+      ]
+    }
+  ],
+  "builtin-baseline": "69860f9b4c0522e82fd0d6260015339a097040e0"
+}
