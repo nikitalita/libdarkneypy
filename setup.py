@@ -194,6 +194,12 @@ class CMakeBuild(build_ext):
             ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp, check=True
         )
         
+        if (self.inplace):
+            # copy the library to the source directory
+            # get the library name (It's something like libdarknetpy.cpython-310-darwin.so)
+            library_name = [f for f in os.listdir(build_temp) if f.startswith("libdarknetpy") and f.endswith(".so")][0]
+            shutil.copy(build_temp / library_name, Path(ext.sourcedir) / "src"/ "libdarknetpy" / library_name)
+        
         
         # This isn't working right now
         # self.generate_pyi(build_temp)

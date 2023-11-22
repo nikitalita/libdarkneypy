@@ -2,10 +2,11 @@
 libdarknetpy module
 """
 from __future__ import annotations
-import numpy
 import typing
-__all__ = ['Detector', 'bbox_t', 'bbox_t_container', 'built_with_cuda', 'built_with_cudnn', 'built_with_opencv', 'detect_image', 'detect_mat', 'dispose', 'get_device_count', 'get_device_name', 'image_t', 'init', 'send_json_custom']
+__all__ = ['Detector', 'bbox_t', 'built_with_cuda', 'built_with_cudnn', 'built_with_opencv', 'get_device_count', 'get_device_name', 'image_t', 'send_json_custom']
 class Detector:
+    nms: float
+    wait_stream: bool
     @staticmethod
     def free_image(m: image_t) -> None:
         ...
@@ -34,6 +35,9 @@ class Detector:
         ...
     def tracking_id(self, cur_bbox_vec: list[bbox_t], change_history: bool = True, frames_story: int = 5, max_dist: int = 40) -> list[bbox_t]:
         ...
+    @property
+    def cur_gpu_id(self) -> int:
+        ...
 class bbox_t:
     frames_counter: int
     h: int
@@ -46,20 +50,12 @@ class bbox_t:
     y: int
     y_3d: float
     z_3d: float
-class bbox_t_container:
-    def __init__(self) -> None:
-        ...
-    @property
-    def candidates(self) -> numpy.ndarray:
-        ...
-    @candidates.setter
-    def candidates(self) -> None:
-        ...
 class image_t:
     c: int
-    data: float
     h: int
     w: int
+    def __init__(self, vdata: list[int] = []) -> None:
+        ...
 def built_with_cuda() -> bool:
     """
     Check if the library was built with CUDA support
@@ -72,18 +68,6 @@ def built_with_opencv() -> bool:
     """
     Check if the library was built with OpenCV support
     """
-def detect_image(filename: str, container: bbox_t_container) -> int:
-    """
-    Detect objects in an image
-    """
-def detect_mat(data: int, data_length: int, container: bbox_t_container) -> int:
-    """
-    Detect objects in a resized image
-    """
-def dispose() -> int:
-    """
-    Dispose the detector
-    """
 def get_device_count() -> int:
     """
     Get the number of available GPUs
@@ -91,10 +75,6 @@ def get_device_count() -> int:
 def get_device_name(gpu: int, deviceName: str) -> int:
     """
     Get the name of a GPU by index
-    """
-def init(configurationFilename: str, weightsFilename: str, gpu: int = 0, batch_size: int = 1) -> int:
-    """
-    Initialize the detector
     """
 def send_json_custom(send_buf: str, port: int, timeout: int) -> None:
     """

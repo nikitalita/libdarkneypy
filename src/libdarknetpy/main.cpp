@@ -1,5 +1,3 @@
-#include "yolo_v2_class.hpp"
-
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/pybind11.h>
@@ -7,12 +5,14 @@
 #include <pybind11/stl_bind.h>
 #include <pybind11/embed.h>
 #include <pybind11/pytypes.h>
-#include <pybind11/numpy.h>
 #include <array>
 #include <pybind11/stl.h>
 #include <pybind11/complex.h>
-#include <pybind11/functional.h> 
+#include <pybind11/functional.h>
 #include <pybind11/chrono.h>
+#define OPENCV 1
+#include "yolo_v2_class.hpp"
+#include "stb_image.h"
 
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
@@ -20,15 +20,53 @@
 namespace py = pybind11;
 std::vector<bbox_t> (Detector::*detect_1)(std::string, float, bool) = &Detector::detect;
 std::vector<bbox_t> (Detector::*detect_2)(image_t, float, bool) = &Detector::detect;
+#ifdef OPENCV
 std::vector<bbox_t> (Detector::*detect_3)(cv::Mat, float, bool) = &Detector::detect;
+#endif
+
+void raw_data_to_image_t(image_t &ret_im, const uint8_t *indata, size_t size)
+{
+    if (!size)
+    {
+        ret_im.data = nullptr;
+        ret_im.h = 0;
+        ret_im.w = 0;
+        ret_im.c = 0;
+        return;
+    }
+    int h, w, c = 0;
+    auto *data = stbi_load_from_memory(indata, size, &h, &w, &c, 3);
+
+    int i, j, k;
+    ret_im.data = (float *)calloc(h * w * c, sizeof(float));
+    if (!ret_im.data)
+        throw std::runtime_error("Can't allocate image data");
+    ret_im.h = h;
+    ret_im.w = w;
+    ret_im.c = c;
+    for (k = 0; k < c; ++k)
+    {
+        for (j = 0; j < h; ++j)
+        {
+            for (i = 0; i < w; ++i)
+            {
+                int dst_index = i + w * j + w * h * k;
+                int src_index = k + c * i + c * w * j;
+                ret_im.data[dst_index] = (float)data[src_index] / 255.;
+            }
+        }
+    }
+    free(data);
+}
+
+void raw_data_to_image_t_vec(image_t &ret_im, const std::vector<uint8_t> &vdata)
+{
+    raw_data_to_image_t(ret_im, vdata.data(), vdata.size());
+}
 
 PYBIND11_MODULE(_libdarknetpy, m)
 {
     m.doc() = "libdarknetpy module";
-    m.def("init", &init, py::arg("configurationFilename"), py::arg("weightsFilename"), py::arg("gpu") = 0, py::arg("batch_size") = 1, "Initialize the detector");
-    m.def("detect_image", &detect_image, py::arg("filename"), py::arg("container"), "Detect objects in an image");
-    m.def("detect_mat", &detect_mat, py::arg("data"), py::arg("data_length"), py::arg("container"), "Detect objects in a resized image");
-    m.def("dispose", &dispose, "Dispose the detector");
     m.def("get_device_count", &get_device_count, "Get the number of available GPUs");
     m.def("get_device_name", &get_device_name, py::arg("gpu"), py::arg("deviceName"), "Get the name of a GPU by index");
     m.def("built_with_cuda", &built_with_cuda, "Check if the library was built with CUDA support");
@@ -50,30 +88,15 @@ PYBIND11_MODULE(_libdarknetpy, m)
         .def_readwrite("z_3d", &bbox_t::z_3d);
 
     py::class_<image_t>(m, "image_t")
-        .def_readwrite("data", &image_t::data)
+        .def("__init__", &raw_data_to_image_t_vec, py::arg("vdata") = std::vector<uint8_t>())
         .def_readwrite("w", &image_t::w)
         .def_readwrite("h", &image_t::h)
         .def_readwrite("c", &image_t::c);
 
-
-// bbox_t_container looks like this:
-// struct bbox_t_container {
-//     bbox_t candidates[C_SHARP_MAX_OBJECTS];
-// };
-    py::class_<bbox_t_container>(m, "bbox_t_container")
-        .def(py::init<>())
-        .def_property("candidates", [](bbox_t_container &p)->pybind11::array {
-            auto dtype = pybind11::dtype(pybind11::format_descriptor<bbox_t>::format());
-            return pybind11::array(
-                dtype, 
-                { C_SHARP_MAX_OBJECTS }, 
-                { sizeof(bbox_t) }, 
-                p.candidates, 
-                nullptr
-            );
-            }, [](bbox_t_container& p) {});
-
     py::class_<Detector>(m, "Detector")
+        .def_readonly("cur_gpu_id", &Detector::cur_gpu_id)
+        .def_readwrite("nms", &Detector::nms)
+        .def_readwrite("wait_stream", &Detector::wait_stream)
         .def(py::init<std::string, std::string, int, int>(),
              py::arg("configurationFilename"), py::arg("weightsFilename"), py::arg("gpu") = 0, py::arg("batch_size") = 1)
         .def("detect", detect_1, py::arg("image_filename"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
@@ -85,16 +108,22 @@ PYBIND11_MODULE(_libdarknetpy, m)
         .def("get_net_height", &Detector::get_net_height)
         .def("get_net_color_depth", &Detector::get_net_color_depth)
         .def("tracking_id", &Detector::tracking_id, py::arg("cur_bbox_vec"), py::arg("change_history") = true, py::arg("frames_story") = 5, py::arg("max_dist") = 40)
-#ifdef OPENCV
         // .def("detect", detect_3, py::arg("mat"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
         // wrapper function for above
         .def(
-            "detect_raw", [](Detector &d, std::vector<uint8_t> vdata)
+            "detect_raw", [](Detector &d, const std::vector<uint8_t> &vdata)
             {
-            cv::Mat mat = imdecode(cv::Mat(vdata), 1);
-            return d.detect(mat); },
-            py::arg("vdata"))
+#ifdef OPENCV
+                cv::Mat mat = imdecode(cv::Mat(vdata), 1);
+                return d.detect(mat);
+#else
+                image_t im;
+                raw_data_to_image_t_vec(im, vdata);
+                return d.detect(im);
 #endif
+            },
+            py::arg("vdata"))
+
         .def("get_cuda_context", &Detector::get_cuda_context);
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
