@@ -37,6 +37,20 @@ find_package(Darknet CONFIG REQUIRED)
 pybind11_add_module(_libdarknetpy main.cpp)
 target_link_libraries(_libdarknetpy PRIVATE Darknet::dark)
 
+# Windows only check: check for VCPKG_TARGET_TRIPLET, see if it's static or static-md
+if( WIN32 AND DEFINED VCPKG_TARGET_TRIPLET )
+  if(${VCPKG_TARGET_TRIPLET} MATCHES "static-md")
+    # we need to link to the dynamic CRT runtime
+    message(STATUS "Linking to dynamic CRT runtime")
+    set_property(TARGET _libdarknetpy PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+  elseif(${VCPKG_TARGET_TRIPLET} MATCHES "static")
+    # we need to link to the static CRT runtime
+    message(STATUS "Linking to static CRT runtime")
+    set_property(TARGET _libdarknetpy PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  endif()
+endif()
+
+
 if(UNIX AND NOT (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
   set(SHAREDLIB_CXX_FLAGS "-Wl,-Bsymbolic")
   set(SHAREDLIB_C_FLAGS "-Wl,-Bsymbolic")
