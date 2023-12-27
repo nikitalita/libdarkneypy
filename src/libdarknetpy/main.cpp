@@ -108,21 +108,20 @@ PYBIND11_MODULE(_libdarknetpy, m)
         .def("get_net_height", &Detector::get_net_height)
         .def("get_net_color_depth", &Detector::get_net_color_depth)
         .def("tracking_id", &Detector::tracking_id, py::arg("cur_bbox_vec"), py::arg("change_history") = true, py::arg("frames_story") = 5, py::arg("max_dist") = 40)
-        // .def("detect", detect_3, py::arg("mat"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
         // wrapper function for above
         .def(
-            "detect_raw", [](Detector &d, const std::vector<uint8_t> &vdata)
+            "detect_raw", [](Detector &d, const std::vector<uint8_t> &vdata, float thresh = 0.2, bool use_mean = false)
             {
 #ifdef OPENCV
                 cv::Mat mat = imdecode(cv::Mat(vdata), 1);
-                return d.detect(mat);
+                return d.detect(mat, thresh, use_mean);
 #else
                 image_t im;
                 raw_data_to_image_t_vec(im, vdata);
-                return d.detect(im);
+                return d.detect(mat, thresh, use_mean);
 #endif
             },
-            py::arg("vdata"))
+            py::arg("vdata"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
 
         .def("get_cuda_context", &Detector::get_cuda_context);
 #ifdef VERSION_INFO
