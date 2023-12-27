@@ -13,7 +13,8 @@ if(NOT pybind11_FOUND)
 endif()
 
 find_package(pybind11 CONFIG REQUIRED)
-if(APPLE)
+find_package(OpenMP QUIET)
+if(APPLE AND NOT OPENMP_FOUND)
   # libomp 15.0+ from brew is keg-only, so have to search in other locations.
   # See https://github.com/Homebrew/homebrew-core/issues/112107#issuecomment-1278042927.
   execute_process(COMMAND brew --prefix libomp
