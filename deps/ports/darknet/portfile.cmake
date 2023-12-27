@@ -4,7 +4,7 @@ vcpkg_from_github(
   REF 27a4e80b75a463e8bb10e8dd74ce0547d2a1b70c
   SHA512 c79243900a5b0c6dcec1b82c50da2fd12ee6e76fc2a31adbecfced47399ab0f8e9bafe6d656d0de3f9ad69370e6ed78cb1b1d57e082257cbed41151f91400cee
   HEAD_REF master
-  PATCHES 0002-fix-dependence-getopt.patch 0003-fix-dependence-libopt-config.patch
+  PATCHES 0002-fix-dependence-getopt.patch
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS

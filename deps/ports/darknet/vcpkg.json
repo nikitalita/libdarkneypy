@@ -56,7 +56,7 @@
       "description": "Build darknet with support for latest version of OpenCV",
       "dependencies": [
         {
-          "name": "opencv4",
+          "name": "opencv",
           "default-features": false,
           "features": [
             "contrib",
