@@ -153,7 +153,7 @@ class CMakeBuild(build_ext):
                 # CMake 3.12+ only.
                 build_args += [f"-j{self.parallel}"]
 
-        build_temp = Path(self.build_temp) / ext.name
+        build_temp = (Path(self.build_temp) / ext.name).resolve()
         if not build_temp.exists():
             build_temp.mkdir(parents=True)
         if not os.environ.get("VCPKG_ROOT") and not os.environ.get("LIBDARKNETPY_NO_VCPKG"):
@@ -168,36 +168,72 @@ class CMakeBuild(build_ext):
             raise Exception("VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
         toolchain_file = vcpkg_root / "scripts" / "buildsystems" / "vcpkg.cmake"
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE={}".format(str(toolchain_file))]
-        cmake_args += ["-DVCPKG_TARGET_TRIPLET={}".format(target_triplet)]
+        cmake_args += ["-DVCPKG_INSTALL_OPTIONS=--clean-after-build"]
         # set pybind11_DIR
         cmake_args += ["-Dpybind11_DIR={}".format(get_cmake_dir())]
 
         if (target_triplet == "universal2-osx"):
+            # make two child dirs in build_temp, one for each target
             
-            # # we have to run vcpkg install for both x86_64 and arm64
-            # # and then merge the results
-            # vcpkg_installed_dir = build_temp / "vcpkg_installed"
-            # uni2_triplet = install_vcpkg_universal2_binaries(ext.sourcedir, vcpkg_installed_dir, vcpkg_root)
-            # uni2_dir = vcpkg_installed_dir / uni2_triplet
-            # cmake_args += ["-DCMAKE_PREFIX_PATH={}".format(str(uni2_dir))]
-            # # skip install
-            # cmake_args += ["-DVCPKG_MANIFEST_INSTALL=OFF"]
+            # find the DCMAKE_LIBRARY_OUTPUT_DIRECTORY in the cmake_args
+            # and replace it with the build_temp
             
-            # This isn't working yet
-            raise Exception("universal2-osx not supported yet")
+            build_temp_x86_64 = build_temp / "x86_64"
+            build_temp_arm64 = build_temp / "arm64"
+            build_temp_x86_64.mkdir(parents=True, exist_ok=True)
+            build_temp_arm64.mkdir(parents=True, exist_ok=True)
+            build_temp_x86_64_out = build_temp_x86_64 / "out"
+            build_temp_arm64_out = build_temp_arm64 / "out"
+            
+            cmake_args_x86_64 = cmake_args + ["-DCMAKE_OSX_ARCHITECTURES=x86_64", "-DVCPKG_TARGET_TRIPLET=x64-osx"]
+            cmake_args_arm64 = cmake_args + ["-DCMAKE_OSX_ARCHITECTURES=arm64", "-DVCPKG_TARGET_TRIPLET=arm64-osx"]
+            for i, arg in enumerate(cmake_args):
+                if arg.startswith("-DCMAKE_LIBRARY_OUTPUT_DIRECTORY"):
+                    cmake_args_x86_64[i] = "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(build_temp_x86_64_out)
+                    cmake_args_arm64[i] = "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(build_temp_arm64_out)
+                    break
 
-
-        subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args], env=os.environ, cwd=build_temp, check=True, 
-        )
-        subprocess.run(
-            ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp, check=True
-        )
+            os.environ["VCPKG_DEFAULT_TRIPLET"] = "arm64-osx"
+            #same for arm64
+            subprocess.run(
+                ["cmake", ext.sourcedir, *cmake_args_arm64], env=os.environ, cwd=build_temp_arm64, check=True, 
+            )
+            subprocess.run(
+                ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp_arm64, check=True
+            )
+            # now find the libraries and merge them
+            lib_arm64 = [f for f in os.listdir(build_temp_arm64_out) if f.startswith("_libdarknetpy") and f.endswith(".so")][0]
+            lib_arm64_temp_path = build_temp_arm64_out / lib_arm64
+            
+            #x86_64
+            # run cmake for each target
+            os.environ["VCPKG_DEFAULT_TRIPLET"] = "x64-osx"
+            subprocess.run(
+                ["cmake", ext.sourcedir, *cmake_args_x86_64], env=os.environ, cwd=build_temp_x86_64, check=True, 
+            )
+            subprocess.run(
+                ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp_x86_64, check=True
+            )
+            lib_x86_64 = [f for f in os.listdir(build_temp_x86_64_out) if f.startswith("_libdarknetpy") and f.endswith(".so")][0]
+            lib_x86_64_temp_path = build_temp_x86_64_out / lib_x86_64
+            
+            # run lipo
+            subprocess.run(
+                ["lipo", "-create", "-output", lib_x86_64, str(lib_x86_64_temp_path), str(lib_arm64_temp_path)], env=os.environ, cwd=extdir, check=True
+            )
+        else:
+            cmake_args += ["-DVCPKG_TARGET_TRIPLET={}".format(target_triplet)]
+            subprocess.run(
+                ["cmake", ext.sourcedir, *cmake_args], env=os.environ, cwd=build_temp, check=True, 
+            )
+            subprocess.run(
+                ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp, check=True
+            )
         
         if (self.inplace):
             # copy the library to the source directory
             # get the library name (It's something like libdarknetpy.cpython-310-darwin.so)
-            library_name = [f for f in os.listdir(build_temp) if f.startswith("libdarknetpy") and f.endswith(".so")][0]
+            library_name = [f for f in os.listdir(build_temp) if f.startswith("_libdarknetpy") and f.endswith(".so")][0]
             shutil.copy(build_temp / library_name, Path(ext.sourcedir) / "src"/ "libdarknetpy" / library_name)
         
         
