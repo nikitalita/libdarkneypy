@@ -23,10 +23,10 @@ jobs:
             VCPKG_DIR: "D:\\vcpkg"
           - os: macos-latest
             VCPKG_DEFAULT_TRIPLET: "x64-osx"
-            VCPKG_DIR: '${{ github.workspace }}/vcpkg'
+            VCPKG_DIR: '/tmp/vcpkg'
           - os: ubuntu-latest
             VCPKG_DEFAULT_TRIPLET: "x64-linux"
-            VCPKG_DIR: '${{ github.workspace }}/vcpkg'
+            VCPKG_DIR: '/tmp/vcpkg'
 
 
     runs-on: ${{ matrix.os }}
