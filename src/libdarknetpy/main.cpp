@@ -122,7 +122,8 @@ PYBIND11_MODULE(_libdarknetpy, m)
             },
             py::arg("vdata"), py::arg("thresh") = 0.2, py::arg("use_mean") = false)
 
-        .def("get_cuda_context", &Detector::get_cuda_context);
+        // .def("get_cuda_context", &Detector::get_cuda_context)
+        ;
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
 #else

@@ -1,9 +1,12 @@
+# mypy: ignore-errors
+
 import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -51,7 +54,7 @@ class _PackageFinder:
     in the build directory (as opposed to their install location)
     """
 
-    mapping = {}
+    mapping: ClassVar[dict] = {}
 
     @classmethod
     def find_spec(cls, fullname, path, target=None):
@@ -171,13 +174,13 @@ class CMakeBuild(build_ext):
             vcpkg_json_path = self.get_root(ext) / "vcpkg.json"
             baseline = get_baseline_from_vcpkgjson(vcpkg_json_path)
             install_vcpkg(build_temp, baseline)
-        vcpkg_root = Path(os.environ.get("VCPKG_ROOT"))
         print("VCPKG_ROOT set to {}".format(os.environ.get("VCPKG_ROOT")))
         # include vcpkg toolchain file from VCPKG_ROOT
         if not os.environ.get("VCPKG_ROOT"):
             raise Exception(
                 "VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory"
             )
+        vcpkg_root = Path(os.environ.get("VCPKG_ROOT") or "")
         toolchain_file = vcpkg_root / "scripts" / "buildsystems" / "vcpkg.cmake"
         cmake_args += [f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file!s}"]
         cmake_args += ["-DVCPKG_INSTALL_OPTIONS=--clean-after-build"]
@@ -197,8 +200,16 @@ class CMakeBuild(build_ext):
             build_temp_x86_64_out = build_temp_x86_64 / "out"
             build_temp_arm64_out = build_temp_arm64 / "out"
 
-            cmake_args_x86_64 = [*cmake_args, "-DCMAKE_OSX_ARCHITECTURES=x86_64", "-DVCPKG_TARGET_TRIPLET=x64-osx"]
-            cmake_args_arm64 = [*cmake_args, "-DCMAKE_OSX_ARCHITECTURES=arm64", "-DVCPKG_TARGET_TRIPLET=arm64-osx"]
+            cmake_args_x86_64 = [
+                *cmake_args,
+                "-DCMAKE_OSX_ARCHITECTURES=x86_64",
+                "-DVCPKG_TARGET_TRIPLET=x64-osx",
+            ]
+            cmake_args_arm64 = [
+                *cmake_args,
+                "-DCMAKE_OSX_ARCHITECTURES=arm64",
+                "-DVCPKG_TARGET_TRIPLET=arm64-osx",
+            ]
             for i, arg in enumerate(cmake_args):
                 if arg.startswith("-DCMAKE_LIBRARY_OUTPUT_DIRECTORY"):
                     cmake_args_x86_64[i] = "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(
@@ -303,7 +314,7 @@ class CMakeBuild(build_ext):
         print(f"Root is {sourcedir.resolve()}")
         return sourcedir.resolve()
 
-    def generate_pyi(self, build_temp) -> None:
+    def generate_pyi(self, build_temp: Path) -> None:
         # Configure custom loader
         _PackageFinder.mapping = {"libdarknetpy": str(build_temp / "libdarknetpy")}
         sys.meta_path.insert(0, _PackageFinder)
@@ -342,7 +353,7 @@ class CMakeBuild(build_ext):
 
 
 class LibdarknetpyDistribution(Distribution):
-    def has_ext_modules(self):
+    def has_ext_modules(self) -> bool:
         return True
 
 

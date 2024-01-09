@@ -248,10 +248,10 @@ def install_vcpkg(build_temp: Path, baseline_commit: str) -> Path:
         # Set vcpkg root
         os.environ["VCPKG_ROOT"] = str(vcpkg_root)
         return vcpkg_root
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
         raise Exception(
             "Failed to detect and install vcpkg, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory"
-        )
+        ) from e
 
 
 def get_vcpkg_triplet(plat_name: str) -> str:
