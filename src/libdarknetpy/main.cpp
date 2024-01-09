@@ -3,7 +3,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/functional.h>
 #include <pybind11/stl_bind.h>
-#include <pybind11/embed.h>
 #include <pybind11/pytypes.h>
 #include <array>
 #include <pybind11/stl.h>
