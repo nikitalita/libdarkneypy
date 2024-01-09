@@ -8,13 +8,26 @@ on:
       - main
   pull_request:
 
+env:
+  vcpkgCommitId: '69860f9b4c0522e82fd0d6260015339a097040e0'
+
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.8", "3.10"]
+        include:
+          - os: windows-latest
+            VCPKG_DEFAULT_TRIPLET: "x64-windows-static-md"
+            VCPKG_DIR: "D:\\vcpkg"
+          - os: macos-latest
+            VCPKG_DEFAULT_TRIPLET: "x64-osx"
+            VCPKG_DIR: '${{ github.workspace }}/vcpkg'
+          - os: ubuntu-latest
+            VCPKG_DEFAULT_TRIPLET: "x64-linux"
+            VCPKG_DIR: '${{ github.workspace }}/vcpkg'
+
 
     runs-on: ${{ matrix.os }}
 
@@ -27,8 +40,22 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
+
+      - uses: lukka/get-cmake@latest
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@main
+        id: runvcpkg
+        with:
+          # This specifies the location of vcpkg, where it is going to be restored from cache, or create from scratch.
+          vcpkgDirectory: ${{ matrix.VCPKG_DIR }}
+          # The Git commit id of vcpkg to be checked out. This is only needed because we are not using a submodule.
+          vcpkgGitCommitId: '${{ env.vcpkgCommitId }}'
+          # The vcpkg.json file, which will be part of cache key computation.
+          vcpkgJsonGlob: '**/libdarknetpy/vcpkg.json'
+          doNotCache: false
+
       - name: Install deps
-        run: choco install wget 7zip cmake
+        run: choco install wget 7zip
         if: matrix.os == 'windows-latest'
 
       - name: Install deps
@@ -51,7 +78,7 @@ jobs:
 
       # Currently conda-build requires the dead package "toml" but doesn't declare it
       - name: Prepare
-        run: conda install conda-build conda-verify pytest toml cmake
+        run: conda install conda-build conda-verify pytest toml
 
       - name: Build
         run: conda build conda.recipe
