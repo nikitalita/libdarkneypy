@@ -1,4 +1,3 @@
-
 def test_main():
     return None
     # m.init(bytes("/Users/nikita/Workspace/OCRAggregatorServer/data/model.cfg", encoding="utf-8"), bytes("/Users/nikita/Workspace/OCRAggregatorServer/data/model.weights", encoding="utf-8"), 0,1)

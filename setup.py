@@ -1,33 +1,40 @@
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
-import shutil
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 from setuptools.dist import Distribution
+
 if sys.version_info < (3, 12):
-    from setuptools._distutils.util import get_platform
+    pass
 else:
-    from sysconfig import get_platform
-from pybind11 import get_cmake_dir
-import pybind11_stubgen
+    pass
 import importlib
 from importlib.machinery import SourceFileLoader
+
+import pybind11_stubgen
+from pybind11 import get_cmake_dir
+
 # load the helpers module from the helpers package
 
 # get current dir
 current_dir = os.path.dirname(os.path.realpath(__file__))
 install_vcpkg_path = os.path.join(current_dir, "helpers", "install_vcpkg.py")
-install_vcpkg_module = SourceFileLoader("install_vcpkg", install_vcpkg_path).load_module()
+install_vcpkg_module = SourceFileLoader(
+    "install_vcpkg", install_vcpkg_path
+).load_module()
 install_vcpkg = install_vcpkg_module.install_vcpkg
 get_baseline_from_vcpkgjson = install_vcpkg_module.get_baseline_from_vcpkgjson
 get_vcpkg_static_triplet = install_vcpkg_module.get_vcpkg_static_triplet
 make_vcpkg_universal2_binaries = install_vcpkg_module.make_vcpkg_universal2_binaries
 install_vcpkg_manifest = install_vcpkg_module.install_vcpkg_manifest
-install_vcpkg_universal2_binaries = install_vcpkg_module.install_vcpkg_universal2_binaries
+install_vcpkg_universal2_binaries = (
+    install_vcpkg_module.install_vcpkg_universal2_binaries
+)
 
 # Convert distutils Windows platform specifiers to CMake -A arguments
 PLAT_TO_CMAKE = {
@@ -53,7 +60,6 @@ class _PackageFinder:
             return importlib.util.spec_from_file_location(fullname, m)
 
 
-
 # A CMakeExtension needs a sourcedir instead of a file list.
 # The name must be the _single_ output extension from the CMake build.
 # If you need multiple extensions, see scikit-build.
@@ -64,22 +70,23 @@ class CMakeExtension(Extension):
 
 
 class CMakeBuild(build_ext):
-
     def build_extension(self, ext: CMakeExtension) -> None:
         # Must be in this form due to bug in .resolve() only fixed in Python 3.10+
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
         # Using this requires trailing slash for auto-detection & inclusion of
         # auxiliary "native" libs
-        plat_name : str = self.plat_name
+        plat_name: str = self.plat_name
 
         debug = int(os.environ.get("DEBUG", 0)) if self.debug is None else self.debug
         cfg = "Debug" if debug else "Release"
 
         # get the target triplet
-        target_triplet = os.environ.get("VCPKG_DEFAULT_TRIPLET", get_vcpkg_static_triplet(plat_name))
+        target_triplet = os.environ.get(
+            "VCPKG_DEFAULT_TRIPLET", get_vcpkg_static_triplet(plat_name)
+        )
         os.environ["VCPKG_DEFAULT_TRIPLET"] = target_triplet
-        
+
         # CMake lets you override the generator - we need to check this.
         # Can be set with Conda-Build, for example.
         cmake_generator = os.environ.get("CMAKE_GENERATOR", "")
@@ -110,6 +117,7 @@ class CMakeBuild(build_ext):
             if not cmake_generator or cmake_generator == "Ninja":
                 try:
                     import ninja
+
                     ninja_executable_path = Path(ninja.BIN_DIR) / "ninja"
                     cmake_args += [
                         "-GNinja",
@@ -156,95 +164,145 @@ class CMakeBuild(build_ext):
         build_temp = (Path(self.build_temp) / ext.name).resolve()
         if not build_temp.exists():
             build_temp.mkdir(parents=True)
-        if not os.environ.get("VCPKG_ROOT") and not os.environ.get("LIBDARKNETPY_NO_VCPKG"):
+        if not os.environ.get("VCPKG_ROOT") and not os.environ.get(
+            "LIBDARKNETPY_NO_VCPKG"
+        ):
             print("VCPKG_ROOT not set, attempting to install vcpkg")
             vcpkg_json_path = self.get_root(ext) / "vcpkg.json"
             baseline = get_baseline_from_vcpkgjson(vcpkg_json_path)
             install_vcpkg(build_temp, baseline)
         vcpkg_root = Path(os.environ.get("VCPKG_ROOT"))
         print("VCPKG_ROOT set to {}".format(os.environ.get("VCPKG_ROOT")))
-        #include vcpkg toolchain file from VCPKG_ROOT
+        # include vcpkg toolchain file from VCPKG_ROOT
         if not os.environ.get("VCPKG_ROOT"):
-            raise Exception("VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory")
+            raise Exception(
+                "VCPKG_ROOT not set, please install vcpkg and set VCPKG_ROOT to the vcpkg root directory"
+            )
         toolchain_file = vcpkg_root / "scripts" / "buildsystems" / "vcpkg.cmake"
-        cmake_args += ["-DCMAKE_TOOLCHAIN_FILE={}".format(str(toolchain_file))]
+        cmake_args += [f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file!s}"]
         cmake_args += ["-DVCPKG_INSTALL_OPTIONS=--clean-after-build"]
         # set pybind11_DIR
-        cmake_args += ["-Dpybind11_DIR={}".format(get_cmake_dir())]
+        cmake_args += [f"-Dpybind11_DIR={get_cmake_dir()}"]
 
-        if (target_triplet == "universal2-osx"):
+        if target_triplet == "universal2-osx":
             # make two child dirs in build_temp, one for each target
-            
+
             # find the DCMAKE_LIBRARY_OUTPUT_DIRECTORY in the cmake_args
             # and replace it with the build_temp
-            
+
             build_temp_x86_64 = build_temp / "x86_64"
             build_temp_arm64 = build_temp / "arm64"
             build_temp_x86_64.mkdir(parents=True, exist_ok=True)
             build_temp_arm64.mkdir(parents=True, exist_ok=True)
             build_temp_x86_64_out = build_temp_x86_64 / "out"
             build_temp_arm64_out = build_temp_arm64 / "out"
-            
-            cmake_args_x86_64 = cmake_args + ["-DCMAKE_OSX_ARCHITECTURES=x86_64", "-DVCPKG_TARGET_TRIPLET=x64-osx"]
-            cmake_args_arm64 = cmake_args + ["-DCMAKE_OSX_ARCHITECTURES=arm64", "-DVCPKG_TARGET_TRIPLET=arm64-osx"]
+
+            cmake_args_x86_64 = [*cmake_args, "-DCMAKE_OSX_ARCHITECTURES=x86_64", "-DVCPKG_TARGET_TRIPLET=x64-osx"]
+            cmake_args_arm64 = [*cmake_args, "-DCMAKE_OSX_ARCHITECTURES=arm64", "-DVCPKG_TARGET_TRIPLET=arm64-osx"]
             for i, arg in enumerate(cmake_args):
                 if arg.startswith("-DCMAKE_LIBRARY_OUTPUT_DIRECTORY"):
-                    cmake_args_x86_64[i] = "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(build_temp_x86_64_out)
-                    cmake_args_arm64[i] = "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(build_temp_arm64_out)
+                    cmake_args_x86_64[i] = "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(
+                        build_temp_x86_64_out
+                    )
+                    cmake_args_arm64[i] = "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(
+                        build_temp_arm64_out
+                    )
                     break
 
             os.environ["VCPKG_DEFAULT_TRIPLET"] = "arm64-osx"
-            #same for arm64
+            # same for arm64
             subprocess.run(
-                ["cmake", ext.sourcedir, *cmake_args_arm64], env=os.environ, cwd=build_temp_arm64, check=True, 
+                ["cmake", ext.sourcedir, *cmake_args_arm64],
+                env=os.environ,
+                cwd=build_temp_arm64,
+                check=True,
             )
             subprocess.run(
-                ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp_arm64, check=True
+                ["cmake", "--build", ".", *build_args],
+                env=os.environ,
+                cwd=build_temp_arm64,
+                check=True,
             )
             # now find the libraries and merge them
-            lib_arm64 = [f for f in os.listdir(build_temp_arm64_out) if f.startswith("_libdarknetpy") and f.endswith(".so")][0]
+            lib_arm64 = next(
+                f
+                for f in os.listdir(build_temp_arm64_out)
+                if f.startswith("_libdarknetpy") and f.endswith(".so")
+            )
             lib_arm64_temp_path = build_temp_arm64_out / lib_arm64
-            
-            #x86_64
+
+            # x86_64
             # run cmake for each target
             os.environ["VCPKG_DEFAULT_TRIPLET"] = "x64-osx"
             subprocess.run(
-                ["cmake", ext.sourcedir, *cmake_args_x86_64], env=os.environ, cwd=build_temp_x86_64, check=True, 
+                ["cmake", ext.sourcedir, *cmake_args_x86_64],
+                env=os.environ,
+                cwd=build_temp_x86_64,
+                check=True,
             )
             subprocess.run(
-                ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp_x86_64, check=True
+                ["cmake", "--build", ".", *build_args],
+                env=os.environ,
+                cwd=build_temp_x86_64,
+                check=True,
             )
-            lib_x86_64 = [f for f in os.listdir(build_temp_x86_64_out) if f.startswith("_libdarknetpy") and f.endswith(".so")][0]
+            lib_x86_64 = next(
+                f
+                for f in os.listdir(build_temp_x86_64_out)
+                if f.startswith("_libdarknetpy") and f.endswith(".so")
+            )
             lib_x86_64_temp_path = build_temp_x86_64_out / lib_x86_64
-            
+
             # run lipo
             subprocess.run(
-                ["lipo", "-create", "-output", lib_x86_64, str(lib_x86_64_temp_path), str(lib_arm64_temp_path)], env=os.environ, cwd=extdir, check=True
+                [
+                    "lipo",
+                    "-create",
+                    "-output",
+                    lib_x86_64,
+                    str(lib_x86_64_temp_path),
+                    str(lib_arm64_temp_path),
+                ],
+                env=os.environ,
+                cwd=extdir,
+                check=True,
             )
         else:
-            cmake_args += ["-DVCPKG_TARGET_TRIPLET={}".format(target_triplet)]
+            cmake_args += [f"-DVCPKG_TARGET_TRIPLET={target_triplet}"]
             subprocess.run(
-                ["cmake", ext.sourcedir, *cmake_args], env=os.environ, cwd=build_temp, check=True, 
+                ["cmake", ext.sourcedir, *cmake_args],
+                env=os.environ,
+                cwd=build_temp,
+                check=True,
             )
             subprocess.run(
-                ["cmake", "--build", ".", *build_args], env=os.environ, cwd=build_temp, check=True
+                ["cmake", "--build", ".", *build_args],
+                env=os.environ,
+                cwd=build_temp,
+                check=True,
             )
-        
-        if (self.inplace):
+
+        if self.inplace:
             # copy the library to the source directory
             # get the library name (It's something like libdarknetpy.cpython-310-darwin.so)
-            library_name = [f for f in os.listdir(build_temp) if f.startswith("_libdarknetpy") and f.endswith(".so")][0]
-            shutil.copy(build_temp / library_name, Path(ext.sourcedir) / "src"/ "libdarknetpy" / library_name)
-        
-        
+            library_name = next(
+                f
+                for f in os.listdir(build_temp)
+                if f.startswith("_libdarknetpy") and f.endswith(".so")
+            )
+            shutil.copy(
+                build_temp / library_name,
+                Path(ext.sourcedir) / "src" / "libdarknetpy" / library_name,
+            )
+
         # This isn't working right now
         # self.generate_pyi(build_temp)
-        
-    def get_root(self, ext:CMakeExtension) -> Path:
+
+    def get_root(self, ext: CMakeExtension) -> Path:
         sourcedir = Path(ext.sourcedir)
-        print("Root is {}".format(sourcedir.resolve()))
+        print(f"Root is {sourcedir.resolve()}")
         return sourcedir.resolve()
-        
+
     def generate_pyi(self, build_temp) -> None:
         # Configure custom loader
         _PackageFinder.mapping = {"libdarknetpy": str(build_temp / "libdarknetpy")}
@@ -262,7 +320,9 @@ class CMakeBuild(build_ext):
         args = pybind11_stubgen.arg_parser().parse_args(stubgen_args)
 
         parser = pybind11_stubgen.stub_parser_from_args(args)
-        printer = pybind11_stubgen.Printer(invalid_expr_as_ellipses=not args.print_invalid_expressions_as_is)
+        printer = pybind11_stubgen.Printer(
+            invalid_expr_as_ellipses=not args.print_invalid_expressions_as_is
+        )
 
         out_dir, sub_dir = pybind11_stubgen.to_output_and_subdir(
             output_dir=args.output_dir,
@@ -285,6 +345,7 @@ class LibdarknetpyDistribution(Distribution):
     def has_ext_modules(self):
         return True
 
+
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.
 setup(
@@ -297,14 +358,12 @@ setup(
     packages=["libdarknetpy"],
     package_data={"libdarknetpy": ["py.typed", "*.so", "*.pyi"]},
     package_dir={"libdarknetpy": "src/libdarknetpy"},
-    data_files=[
-        
-    ],
+    data_files=[],
     ext_modules=[CMakeExtension("libdarknetpy._libdarknetpy")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},
     python_requires=">=3.7",
     distclass=LibdarknetpyDistribution,
-    requires=["pybind11", "helpers"]
+    requires=["pybind11", "helpers"],
 )

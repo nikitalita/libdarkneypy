@@ -1,7 +1,8 @@
-import sys
-import shutil
 import os
+import shutil
 import subprocess
+import sys
+
 
 def make_merger(primary_path, secondary_path):
     # Merge the libraries at `src1` and `src2` and create a
@@ -15,10 +16,10 @@ def make_merger(primary_path, secondary_path):
         rel_path = os.path.relpath(src, primary_path)
         lib_in_secondary = os.path.join(secondary_path, rel_path)
 
-        if os.path.exists(lib_in_secondary) == False:
-            print("Lib not found in secondary source: {}".format(lib_in_secondary))
+        if os.path.exists(lib_in_secondary) is False:
+            print(f"Lib not found in secondary source: {lib_in_secondary}")
             return
-        
+
         merge_libs(src, lib_in_secondary, dst)
 
     # Either copy the file at `src` to `dst`, or, if it is a static
@@ -30,10 +31,17 @@ def make_merger(primary_path, secondary_path):
             find_and_merge_libs(src, dst)
         else:
             shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+
     return copy_file_or_merge_libs
 
+
 def lipo_dir_merge(primary_path, secondary_path, destination_path):
-    shutil.copytree(primary_path, destination_path, copy_function=make_merger(primary_path, secondary_path))
+    shutil.copytree(
+        primary_path,
+        destination_path,
+        copy_function=make_merger(primary_path, secondary_path),
+    )
+
 
 def main():
     #
@@ -41,7 +49,9 @@ def main():
     #
     if len(sys.argv) < 4:
         print("Not enough args")
-        print(f"{sys.argv[0]} <primary directory> <other architecture source> <destination>")
+        print(
+            f"{sys.argv[0]} <primary directory> <other architecture source> <destination>"
+        )
         sys.exit(-1)
 
     # This is where we take most of the files from
@@ -51,7 +61,8 @@ def main():
     # This is where we copy stuff to
     destination_path = sys.argv[3]
     lipo_dir_merge(primary_path, secondary_path, destination_path)
-    
+
+
 if __name__ == "__main__":
     main()
 # Use copytree to do most of the work, with our own `copy_function` doing a little bit
